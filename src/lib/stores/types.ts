@@ -42,6 +42,11 @@ export function isStoreKey(value: unknown): value is StoreKey {
   return (STORE_KEYS as readonly unknown[]).includes(value);
 }
 
+// The stores whose login is a browser's cookies rather than tokens: the app
+// keeps them in a browser partition of their own, which renews them as a
+// browser would. (The others keep tokens or a key in session.json.)
+export const COOKIE_STORES: readonly StoreKey[] = ["ea", "battlenet", "humble"];
+
 // One game the account owns.
 export interface OwnedGame {
   store: StoreKey;

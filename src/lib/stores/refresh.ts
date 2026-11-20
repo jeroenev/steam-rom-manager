@@ -8,7 +8,7 @@
 // so a network problem never takes an account's games out of Steam.
 
 import * as _ from "lodash";
-import { getStoreHost, StoreHost } from "./host";
+import { getStoreHost, hostRefreshes, StoreHost } from "./host";
 import {
   isLoginRejected,
   isTransient,
@@ -149,12 +149,26 @@ function storeContext(
   };
 }
 
-function needsRefreshingHost(host: StoreHost) {
+function needsRefreshingHost(host: StoreHost, store: StoreKey) {
   if (!host.canRefresh) {
     throw new Error(
       "This SRM can't talk to the stores; it uses the games the app last fetched.",
     );
   }
+  if (!hostRefreshes(host, store)) {
+    throw new Error(
+      `This SRM can't fetch the ${STORE_NAMES[store]} library; it uses the games the app last fetched.`,
+    );
+  }
+}
+
+// Offline mode (SRM's setting): libraries aren't fetched by themselves, the
+// cached ones are used. A refresh the user asks for still runs. The app
+// gives a function that reads its live setting.
+let isOffline: () => boolean = () => false;
+
+export function setStoresOffline(offline: boolean | (() => boolean)) {
+  isOffline = typeof offline === "function" ? offline : () => offline;
 }
 
 // One refresh per store at a time in this process; lockRefresh (storage.ts)
@@ -203,7 +217,7 @@ export async function completeLogin(
   const store = pending.store;
   const host = getStoreHost();
   try {
-    needsRefreshingHost(host);
+    needsRefreshingHost(host, store);
     const session = await clientFor(store).completeLogin(
       pending,
       capture,
@@ -338,7 +352,7 @@ export function refreshLibrary(
 // fetch falls back to the cache and isn't tried again for
 // RETRY_AFTER_FAILURE_MS. Callers in this process or another wait for one
 // fetch instead of each making their own. Where the host can't talk to the
-// stores, this is the cache.
+// store, or SRM is offline, this is the cache.
 export async function refreshIfStale(
   store: StoreKey,
   maxAgeMs: number = LIBRARY_MAX_AGE_MS,
@@ -348,7 +362,8 @@ export async function refreshIfStale(
     new Error(`The ${STORE_NAMES[store]} library hasn't been fetched yet`);
   const cached = cachedLibrary(store);
   if (
-    !getStoreHost().canRefresh ||
+    isOffline() ||
+    !hostRefreshes(getStoreHost(), store) ||
     !isStale(cached, maxAgeMs) ||
     (cached && failedRecently(store))
   ) {
@@ -409,7 +424,7 @@ async function refreshAndRecord(
   options: RefreshOptions,
 ): Promise<OwnedLibrary | null> {
   const host = getStoreHost();
-  needsRefreshingHost(host);
+  needsRefreshingHost(host, store);
   const deadlineMs = options.deadlineMs ?? REFRESH_DEADLINE_MS;
   const release = await storage.lockRefresh(store, deadlineMs);
   if (!release) {

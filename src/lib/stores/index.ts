@@ -32,6 +32,7 @@ export {
   pendingLogin,
   refreshIfStale,
   refreshLibrary,
+  setStoresOffline,
   signOut,
 } from "./refresh";
 export { readSessionInfo, storesRoot } from "./storage";

@@ -7,7 +7,11 @@ import {
   StoreRequestInit,
   StoreResponse,
 } from "../../src/lib/stores/host";
-import { StoreKey } from "../../src/lib/stores/types";
+import {
+  LoginCapture,
+  PendingLogin,
+  StoreKey,
+} from "../../src/lib/stores/types";
 
 export interface FakeAnswer {
   status?: number;
@@ -30,6 +34,10 @@ export type FakeHandler = (
 
 export class FakeStoreHost implements StoreHost {
   canRefresh = true;
+  // (set by tests that need them)
+  refreshes?: (store: StoreKey) => boolean;
+  openLoginWindow?: (pending: PendingLogin) => Promise<LoginCapture>;
+  secretsWarning?: () => string | undefined;
   requests: FakeRequest[] = [];
   opened: string[] = [];
   logs: string[] = [];

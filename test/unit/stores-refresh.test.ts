@@ -576,6 +576,55 @@ describe("store accounts", () => {
     ).rejects.toThrow("can't talk to the stores");
   });
 
+  it("a host that can't refresh one store uses its cache, records nothing", async () => {
+    let asked = 0;
+    registerStoreClient(
+      fakeClient("epic", async () => {
+        asked++;
+        return games(9);
+      }),
+    );
+    storage.saveSession("epic", session("t"), host);
+    storage.saveLibrary("epic", library(2));
+    host.refreshes = (store) => store !== "epic";
+    try {
+      expect((await refresh.refreshIfStale("epic")).games).toHaveLength(2);
+      await expect(refresh.refreshLibrary("epic")).rejects.toThrow(
+        "can't fetch the Epic Games Store library",
+      );
+      expect(asked).toBe(0);
+      expect(refresh.accountStatus("epic").lastError).toBeNull();
+    } finally {
+      delete host.refreshes;
+    }
+  });
+
+  it("offline: libraries aren't fetched by themselves, only when asked", async () => {
+    let asked = 0;
+    registerStoreClient(
+      fakeClient("epic", async () => {
+        asked++;
+        return games(5);
+      }),
+    );
+    storage.saveSession("epic", session("t"), host);
+    storage.saveLibrary("epic", library(2));
+    let offline = true;
+    refresh.setStoresOffline(() => offline);
+    try {
+      expect((await refresh.refreshIfStale("epic")).games).toHaveLength(2);
+      expect(asked).toBe(0);
+      expect((await refresh.refreshLibrary("epic")).games).toHaveLength(5);
+      // (the live setting: going online fetches an old library again)
+      offline = false;
+      refresh.setStoreClock(() => Date.now() + refresh.LIBRARY_MAX_AGE_MS * 2);
+      await refresh.refreshIfStale("epic");
+      expect(asked).toBe(2);
+    } finally {
+      refresh.setStoresOffline(false);
+    }
+  });
+
   it("callers wait for one refresh instead of each making their own", async () => {
     let asked = 0;
     registerStoreClient(

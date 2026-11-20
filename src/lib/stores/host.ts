@@ -34,6 +34,10 @@ export interface StoreHost {
   // Whether this host may talk to the stores (sign in, refresh). The
   // standalone command line may not: it uses what the app last fetched.
   readonly canRefresh: boolean;
+  // Whether it may refresh this store's library, when it can't refresh
+  // every store (the app's command line has no cookie partitions, and may
+  // be unable to read the window's sign-ins). Unset: every store.
+  refreshes?(store: StoreKey): boolean;
   // The network for one store: token stores use the app's network stack,
   // cookie stores (EA, Battle.net, Humble) their own browser partition.
   fetchFor(store: StoreKey): StoreFetch;
@@ -45,7 +49,7 @@ export interface StoreHost {
   // keyring: safeStorage's "basic_text"). Shown next to the account.
   secretsWarning?(): string | undefined;
   // Runs SRM's login window for a store; resolves when the done URL is
-  // reached, rejects when the window is closed.
+  // reached, rejects with LoginCancelled when the user closes the window.
   openLoginWindow?(pending: PendingLogin): Promise<LoginCapture>;
   // Opens a page in the user's browser.
   openExternal(url: string): Promise<void>;
@@ -55,6 +59,20 @@ export interface StoreHost {
   clearStoreData?(store: StoreKey): Promise<void>;
   // A warning for the log (already without secrets).
   log?(message: string): void;
+}
+
+// The user closed the login window: no sign-in, and nothing went wrong.
+export class LoginCancelled extends Error {
+  name = "LoginCancelled";
+}
+
+export function isLoginCancelled(err: unknown) {
+  return err instanceof Error && err.name === "LoginCancelled";
+}
+
+// Whether `host` may refresh this store's library.
+export function hostRefreshes(host: StoreHost, store: StoreKey) {
+  return host.canRefresh && (host.refreshes?.(store) ?? true);
 }
 
 const noSecrets = () => {
