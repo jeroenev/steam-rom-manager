@@ -1,0 +1,65 @@
+// A store account in the parser editor. Tokens only, so it takes on every
+// theme; its buttons and text field are the parser form's own (styled by
+// ng-nested-form, which it sits in).
+:host {
+  display: block;
+  // (the whole row of the form's grid: it has no button column)
+  grid-column: 1 / -1;
+  color: var(--srm-text);
+}
+
+p {
+  margin: 0 0 0.35em 0;
+  line-height: var(--srm-line-height);
+  overflow-wrap: anywhere;
+}
+
+.state {
+  font-weight: 600;
+}
+
+.note {
+  color: var(--srm-text-muted);
+}
+
+.result {
+  color: var(--srm-success);
+}
+
+.problem {
+  color: var(--srm-danger);
+}
+
+.warning {
+  padding: 0.35em 0.6em;
+  border-radius: var(--srm-radius-sm);
+  background: var(--srm-warning-soft);
+}
+
+.clickButtons {
+  flex-wrap: wrap;
+  gap: 0.25em;
+  margin: 0.35em 0;
+
+  .clickButton {
+    margin: 0;
+  }
+}
+
+.paste {
+  margin: 0.5em 0;
+  padding: 0.6em;
+  border: 1px solid var(--srm-border);
+  border-radius: var(--srm-radius-md);
+
+  label {
+    display: block;
+    margin-bottom: 0.35em;
+    color: var(--color-nested-form-label);
+  }
+
+  // (a block of its own: outside the form's grid it would be inline)
+  ng-text-input {
+    display: block;
+  }
+}

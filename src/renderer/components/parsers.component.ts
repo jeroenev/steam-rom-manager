@@ -370,6 +370,15 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
                     onInfoClick: onInfoClick,
                     isHidden: isHidden,
                   });
+                } else if (input.inputType == "account") {
+                  // The account of the store the parser's store input
+                  // names: shown, not saved with the parser.
+                  parserInputs[inputFieldName] = new NestedFormElement.Account({
+                    label: input.label,
+                    store: () => this.observeInput(input.accountOf),
+                    onInfoClick: onInfoClick,
+                    isHidden: isHidden,
+                  });
                 }
               }
             }
@@ -928,6 +937,7 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
       this.currentDoc.content = this.lang.docs__md.intro.join("");
     }
     this.loadConfiguration();
+    this.subscriptions.add(this.watchParserType());
     this.subscriptions.add(
       this.cpService.dataObservable.subscribe((data) => {
         this.configPresets = data;
@@ -996,13 +1006,14 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
       if (this.loadedIndex === -1) {
         this.userForm.patchValue(config);
         this.changeRef.detectChanges();
-      } else
+      } else {
         // (a copy: the parser's edits, e.g. moving it to a group, mustn't
         // change the preset itself)
         this.parsersService.setCurrentConfiguration(
           this.configurationIndex,
           _.cloneDeep(config),
         );
+      }
     }
   }
 
@@ -1617,15 +1628,67 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
   // unsaved edits or saved config. (patchValue would leave fields the config
   // lacks holding whatever was there before.)
   private resetForm(config: UserConfiguration) {
-    this.userForm.reset(
-      _.mergeWith(
-        {},
-        this.parsersService.getDefaultValues(),
-        _.cloneDeep(config),
-        (_default: unknown, value: unknown) =>
-          Array.isArray(value) ? value : undefined,
-      ),
-    );
+    this.resetting = true;
+    try {
+      this.userForm.reset(
+        _.mergeWith(
+          {},
+          this.parsersService.getDefaultValues(),
+          _.cloneDeep(config),
+          (_default: unknown, value: unknown) =>
+            Array.isArray(value) ? value : undefined,
+        ),
+      );
+    } finally {
+      this.resetting = false;
+    }
+  }
+  private resetting = false;
+
+  // A parser input's value as it changes (null when there's no such input).
+  private observeInput(name: string | undefined) {
+    const control = name ? this.userForm.get(["parserInputs", name]) : null;
+    return control
+      ? concat(of(control.value), control.valueChanges).pipe(
+          distinctUntilChanged(),
+        )
+      : of(null);
+  }
+
+  // When the user picks a parser type, the inputs of that type that have no
+  // value get their initial ones (a Store Account's toggles start on), and
+  // an empty Steam category gets the type's (a Store Account's "Not
+  // installed"). Not when a parser is loaded: that would change it.
+  private watchParserType() {
+    const control = this.userForm.get("parserType");
+    let current = control.value;
+    return control.valueChanges.subscribe((type: ParserType) => {
+      const picked = type !== current && !this.resetting;
+      current = type;
+      if (picked && type) {
+        this.applyTypeDefaults(type);
+      }
+    });
+  }
+
+  private applyTypeDefaults(type: ParserType) {
+    const info = this.parsersService.getParserInfo(type);
+    for (const [name, input] of Object.entries(info?.inputs ?? {})) {
+      const control = this.userForm.get(["parserInputs", name]);
+      const unset =
+        !!control &&
+        (control.value === null ||
+          control.value === undefined ||
+          control.value === "");
+      if (unset && input.initialValue !== undefined) {
+        control.setValue(_.cloneDeep(input.initialValue));
+      }
+    }
+    const categories = parserInfo.parserTypeDefaults[type]?.steamCategories;
+    const categoriesControl = this.userForm.get("steamCategories");
+    if (categories && categoriesControl && !categoriesControl.value?.length) {
+      categoriesControl.setValue([...categories]);
+    }
   }
 
   private loadConfiguration() {

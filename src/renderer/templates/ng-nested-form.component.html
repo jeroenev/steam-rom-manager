@@ -36,7 +36,7 @@
                   showMarkdown.next(true);
                   child.onInfoClick(
                     currentForm.controls[childrenKey],
-                    currentControl['__path']
+                    currentControl?.['__path'] ?? [childrenKey]
                   )
                 "
               >
@@ -84,6 +84,11 @@
                 <div class="freeButton" (click)="child.onClickMethod()">
                   {{ child.buttonLabel }}
                 </div>
+              </ng-container>
+              <ng-container *ngSwitchCase="'Account'">
+                <ng-store-account
+                  [store]="getAccountStore(child) | async"
+                ></ng-store-account>
               </ng-container>
               <ng-container *ngSwitchCase="'Bubble'">
                 <ng-bubbles
