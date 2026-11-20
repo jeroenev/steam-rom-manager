@@ -128,9 +128,12 @@ Try {
 
     $running = $False
     If ($Config.game -and $Config.game.folder) {
-        # The launcher starts the game: wait for it (3 minutes at most: a
-        # launcher may be updating first) and for its start-up to settle.
-        $timeout = (Get-Date).AddMinutes(3)
+        # The launcher starts the game: wait for it (3 minutes at most, or
+        # what the parser sets: a launcher may update the game or ask to
+        # sign in first) and for its start-up to settle.
+        $minutes = 3
+        If ($Config.game.startTimeoutMinutes -gt 0) { $minutes = [double]$Config.game.startTimeoutMinutes }
+        $timeout = (Get-Date).AddMinutes($minutes)
         While (!@(Get-GameProcesses).Count -and (Get-Date) -lt $timeout) { Start-Sleep -Seconds 1 }
         $running = [bool]@(Get-GameProcesses).Count
         If ($running) {
