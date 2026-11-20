@@ -37,7 +37,7 @@ export function powershellPath(systemRoot: string | undefined): string {
 // - the games in `gamesDir` (the parser's folder field), or when that is
 //   empty in whichever of `defaultDirs` exist;
 // - every folder Windows lists installed programs in (`installLocations`)
-//   that holds installer data.
+//   that holds installer data, except those in a Steam library.
 // Each folder once (case-insensitively, as Windows compares them), in that
 // order.
 export async function gameFolders({
@@ -63,6 +63,7 @@ export async function gameFolders({
     }
   }
   for (const location of installLocations) {
+    if (inSteamLibrary(location)) continue;
     if (path.isAbsolute(location) && fs.existsSync(installDataFile(location))) {
       folders.push(path.resolve(location));
     }
@@ -74,6 +75,12 @@ export async function gameFolders({
     seen.add(key);
     return true;
   });
+}
+
+// An EA game bought on Steam has installer data too, and Windows lists it
+// (Steam's "Steam App <id>" entries). Steam already lists those games.
+function inSteamLibrary(location: string) {
+  return /(^|[\\/])steamapps[\\/]+common([\\/]|$)/i.test(location);
 }
 
 function installDataFile(gameDir: string) {
@@ -114,7 +121,6 @@ export async function installedGames(
     }
 
     const game = parseInstallerData(xmlString, gameDir, { launcherMode });
-    if (game === undefined) continue;
     if (typeof game === "string") {
       failed.push(game);
       continue;
@@ -144,8 +150,8 @@ export interface InstallerDataGame {
 }
 
 // One game's installerdata.xml (already decoded), in either of the two
-// formats EA has used: a game, an error message, or undefined when the file
-// isn't valid XML (skipped). `exists` is how the exe is looked for when the
+// formats EA has used: a game, or an error message (also when the file isn't
+// valid XML, e.g. cut short). `exists` is how the exe is looked for when the
 // file names none: the folder's name without spaces, in Binaries or the
 // folder itself.
 export function parseInstallerData(
@@ -155,10 +161,11 @@ export function parseInstallerData(
     launcherMode = false,
     exists = fs.existsSync,
   }: { launcherMode?: boolean; exists?: (file: string) => boolean } = {},
-): InstallerDataGame | string | undefined {
+): InstallerDataGame | string {
   // (validate() returns true, or an error object, which is truthy too)
-  if (XMLValidator.validate(xmlString, {}) !== true) {
-    return undefined;
+  const valid = XMLValidator.validate(xmlString, {});
+  if (valid !== true) {
+    return `Game in ${gameDir} failed because its installerdata.xml is not valid XML: ${valid.err.msg} (line ${valid.err.line})`;
   }
   const parsedData = new XMLParser().parse(xmlString);
   let title = "";
@@ -173,9 +180,6 @@ export function parseInstallerData(
       ["gameTitles"],
       ["gameTitle"],
     ]) &&
-    // (launcher mode doesn't need the exe the runtime names)
-    (launcherMode ||
-      json.caselessHas(parsedData, [["DiPManifest"], ["runtime"]])) &&
     json.caselessHas(parsedData, [
       ["DiPManifest"],
       ["contentIDs"],
@@ -232,7 +236,7 @@ export function parseInstallerData(
       ["contentID"],
     ]);
   } else {
-    return `Game in ${gameDir}, ${title}, failed because it's installer_data.xml was in an unrecognizable format`;
+    return `Game in ${gameDir} failed because its installerdata.xml was in an unrecognizable format`;
   }
 
   if (!runtime) {

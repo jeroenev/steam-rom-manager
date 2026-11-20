@@ -163,11 +163,12 @@ describe("installerdata.xml", () => {
     );
   });
 
-  it("in launcher mode needs no exe, only the title and content id", () => {
+  it("without an exe: launcher mode lists the game, exe mode says why not", () => {
     const none = () => false;
     const xml = withoutRuntime("No Exe", "Origin.OFR.50.0001");
+    // (was: "unrecognizable format", without looking for the exe)
     expect(parseInstallerData(xml, gameDir, { exists: none })).toMatch(
-      /unrecognizable format/,
+      /contained no runtime/,
     );
     expect(
       parseInstallerData(xml, gameDir, { launcherMode: true, exists: none }),
@@ -188,30 +189,45 @@ describe("installerdata.xml", () => {
     ).toMatchObject({ title: "Older", contentId: "222", filePath: gameDir });
   });
 
-  it("uses an exe named after the folder, in both modes (was: the folder twice in its path)", () => {
-    const older = `<game><metadata><localeInfo><title>Older</title></localeInfo></metadata><contentIDs><contentID>222</contentID></contentIDs></game>`;
-    for (const exe of [
-      path.join(gameDir, "Binaries", "AliceMadnessReturns.exe"),
-      path.join(gameDir, "AliceMadnessReturns.exe"),
+  it("uses an exe named after the folder, in both modes and formats (was: the folder twice in its path)", () => {
+    // (the older format, and the EA app's when it names no exe: exe mode
+    // used to call that one an unrecognizable format)
+    for (const xml of [
+      `<game><metadata><localeInfo><title>Older</title></localeInfo></metadata><contentIDs><contentID>222</contentID></contentIDs></game>`,
+      withoutRuntime("Older", "222"),
     ]) {
-      for (const launcherMode of [false, true]) {
-        expect(
-          parseInstallerData(older, gameDir, {
-            launcherMode,
-            exists: (file) => file === exe,
-          }),
-        ).toEqual({
-          title: "Older",
-          contentId: "222",
-          filePath: exe,
-          args: "",
-        });
+      for (const exe of [
+        path.join(gameDir, "Binaries", "AliceMadnessReturns.exe"),
+        path.join(gameDir, "AliceMadnessReturns.exe"),
+      ]) {
+        for (const launcherMode of [false, true]) {
+          expect(
+            parseInstallerData(xml, gameDir, {
+              launcherMode,
+              exists: (file) => file === exe,
+            }),
+          ).toEqual({
+            title: "Older",
+            contentId: "222",
+            filePath: exe,
+            args: "",
+          });
+        }
       }
     }
   });
 
-  it("skips a file that isn't XML", () => {
-    expect(parseInstallerData("<DiPManifest>", gameDir)).toBeUndefined();
+  it("reports a file that isn't XML (was: skipped without a word)", () => {
+    expect(parseInstallerData("<DiPManifest>", gameDir)).toMatch(
+      /^Game in .*Alice Madness Returns failed because its installerdata\.xml is not valid XML: /,
+    );
+    expect(parseInstallerData("", gameDir)).toMatch(/not valid XML/);
+  });
+
+  it("reports a file in neither format", () => {
+    expect(parseInstallerData("<other/>", gameDir)).toBe(
+      `Game in ${gameDir} failed because its installerdata.xml was in an unrecognizable format`,
+    );
   });
 });
 
@@ -248,6 +264,37 @@ describe("game folders", () => {
         ],
       }),
     ).toEqual([one, alice]);
+  });
+
+  it("leaves out the EA games Steam installed, unless they are in the folder field", async () => {
+    // (Steam lists them as "Steam App <id>", in its library's
+    // steamapps\common; their installer data is what Steam runs EA's
+    // installer with)
+    const steamGames = path.join(
+      root,
+      "folders",
+      "SteamLibrary",
+      "steamapps",
+      "common",
+    );
+    const unravel = game(
+      path.join(steamGames, "UnravelTwo"),
+      installerData("Unravel Two", "1035049"),
+    );
+    expect(
+      await gameFolders({
+        gamesDir: library,
+        installLocations: [
+          unravel,
+          unravel.replaceAll("\\", "/"),
+          unravel.toUpperCase(),
+          alice,
+        ],
+      }),
+    ).toEqual([one, alice]);
+    expect(
+      await gameFolders({ gamesDir: steamGames, installLocations: [unravel] }),
+    ).toEqual([unravel]);
   });
 
   it("searches EA's default folders (those that exist) only when the folder field is empty", async () => {
@@ -292,7 +339,20 @@ describe("games", () => {
     const exeMode = await installedGames([noExe], false);
     expect(exeMode.success).toEqual([]);
     expect(exeMode.failed).toEqual([
-      expect.stringMatching(/unrecognizable format/),
+      expect.stringMatching(/contained no runtime/),
+    ]);
+  });
+
+  it("reports the folders whose installer data is cut short or empty, and lists the others", async () => {
+    const alice = fixture("installerdata-alice.xml");
+    const valid = game(path.join(dir, "Valid"), installerData("Valid", "444"));
+    const cut = game(path.join(dir, "Cut"), alice.slice(0, alice.length / 2));
+    const empty = game(path.join(dir, "Empty"), "");
+    const { success, failed } = await installedGames([cut, valid, empty], true);
+    expect(success.map((s) => s.extractedTitle)).toEqual(["Valid"]);
+    expect(failed).toEqual([
+      expect.stringMatching(/^Game in .*Cut failed because .* not valid XML/),
+      expect.stringMatching(/^Game in .*Empty failed because .* not valid XML/),
     ]);
   });
 

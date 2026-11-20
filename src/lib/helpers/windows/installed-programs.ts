@@ -23,9 +23,6 @@ export const uninstallLists: { key: string; flags: string[] }[] = [
 // list. One reg.exe per list: the lists hold hundreds of programs, and
 // winreg starts a reg.exe for each key it reads. A list that can't be read
 // adds nothing; this never rejects.
-//
-// (reg.exe writes a console code page, not UTF-8: a folder whose name has
-// characters outside it comes out wrong, isn't found, and is skipped.)
 export async function installLocations(): Promise<string[]> {
   const lists = await Promise.all(
     uninstallLists.map(({ key, flags }) => queryInstallLocations(key, flags)),
@@ -33,14 +30,34 @@ export async function installLocations(): Promise<string[]> {
   return lists.flat();
 }
 
-function queryInstallLocations(key: string, flags: string[]) {
+// The InstallLocation values under `key` (`flags` are reg.exe's, e.g.
+// /reg:64). `key` and `flags` must not hold quotes, & or %: they go through
+// cmd.exe.
+export function queryInstallLocations(key: string, flags: string[]) {
   return new Promise<string[]>((resolve) => {
     try {
+      // reg.exe writes its console's code page, the system's OEM one in the
+      // hidden console it gets, which loses every non-ASCII character of a
+      // folder's name. chcp 65001 makes that console UTF-8 first.
+      const query = ["query", key, "/s", "/v", "InstallLocation", ...flags]
+        .map((arg) => `"${arg}"`)
+        .join(" ");
       execFile(
-        regExe(),
-        ["query", key, "/s", "/v", "InstallLocation", ...flags],
-        { windowsHide: true, maxBuffer: 64 * 1024 * 1024, timeout: 60000 },
-        // (reg.exe also exits with 1 when no program has the value)
+        system32("cmd.exe"),
+        [
+          "/d",
+          "/s",
+          "/c",
+          `"chcp 65001>nul & "${system32("reg.exe")}" ${query}"`,
+        ],
+        {
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+          maxBuffer: 64 * 1024 * 1024,
+          timeout: 60000,
+        },
+        // (cmd exits with reg.exe's code, which is also 1 when no program
+        // has the value)
         (error, stdout) => resolve(error ? [] : parseRegQueryOutput(stdout)),
       );
     } catch (e) {
@@ -49,11 +66,11 @@ function queryInstallLocations(key: string, flags: string[]) {
   });
 }
 
-function regExe() {
+function system32(exe: string) {
   return path.win32.join(
     process.env.SystemRoot || "C:\\Windows",
     "System32",
-    "reg.exe",
+    exe,
   );
 }
 

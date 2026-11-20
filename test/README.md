@@ -23,6 +23,10 @@ yarn typecheck
   yarn test test/live
   ```
 
+  On Windows, `$env:SRM_LIVE_UWP = 1` adds the UWP parser's PowerShell
+  checks, and `$env:SRM_LIVE_EA = 1` the EA Desktop parser's registry lookup
+  (needs a game the EA app installed).
+
 Tests run in plain Node, not Electron. `setup.ts` swaps out the modules that
 need Electron or a browser (`src/variables`, `src/paths`, the image-provider
 workers) for stubs in `stubs/`; everything else is the real code. Nothing
