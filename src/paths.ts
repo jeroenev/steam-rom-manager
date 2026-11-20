@@ -84,3 +84,7 @@ export const configPresets: string = path.join(
   userDataDir,
   "configPresets.json",
 );
+// Store accounts (src/lib/stores): a folder per store with its session and
+// owned-games list. Kept out of userConfigurations.json, which bug reports
+// upload.
+export const storesDir: string = path.join(userDataDir, "stores");
