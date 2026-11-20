@@ -394,6 +394,62 @@
       "fatalError__i": "> Store Account parser failed with fatal error:\n ${error}"
     }
   },
+  "stores": {
+    "component": {
+      "chooseStore": "Choose a store to sign in to its account.",
+      "unavailable__i": "Signing in to ${store} comes with a later version of SRM.",
+      "notSignedIn": "Not signed in.",
+      "signedIn": "Signed in.",
+      "signedInAs__i": "Signed in as ${name}.",
+      "games__i": "Games owned: ${count} (fetched ${when}).",
+      "notFetched": "Its games haven't been fetched yet.",
+      "partial": "Some games couldn't be looked up; they are fetched again soon.",
+      "refreshing": "Fetching its games…",
+      "needsSignIn": "The store no longer accepts the saved sign-in. Sign in again.",
+      "lastError__i": "The last refresh failed: ${error}",
+      "readOnly": "This SRM uses the games the app last fetched; sign in and refresh in the app.",
+      "secretsWarning": "No keyring is available, so sign-ins are saved with Chromium's built-in key, which anyone who can read your files can undo. Set up a keyring (such as GNOME Keyring or KWallet) to keep them safe.",
+      "pasteHeading": "Sign in with your browser",
+      "working": "Working…",
+      "buttons": {
+        "signIn": "Sign in",
+        "signInWithBrowser": "Sign in with your browser",
+        "openSignInPage": "Open the sign-in page again",
+        "refresh": "Refresh library",
+        "signOut": "Sign out",
+        "submit": "Finish signing in",
+        "cancel": "Cancel"
+      }
+    },
+    "service": {
+      "unknownStore__i": "Unknown store: ${store}",
+      "signedIn__i": "Signed in to ${store}.",
+      "signedInAs__i": "Signed in to ${store} as ${name}.",
+      "gamesFound__i": "The account owns ${count} games.",
+      "firstFetchFailed__i": "Its games couldn't be listed yet: ${error}",
+      "refreshed__i": "${store}: the account owns ${count} games.",
+      "signedOut__i": "Signed out of ${store}.",
+      "noLoginWindow__i": "${store} signs in through your browser only.",
+      "noLoginWindowHere": "This SRM can't open a sign-in window.",
+      "noBrowserLogin__i": "${store} signs in with SRM's sign-in window only."
+    },
+    "paste": {
+      "instructions": {
+        "epic": "Sign in to Epic Games in your browser. Epic then shows a page of text containing \"authorizationCode\". Copy the code after it (or all of the text) and paste it here. The code works for a few minutes only.",
+        "gog": "Sign in to GOG in your browser. When the page turns blank and its address starts with embed.gog.com/on_login_success, copy the whole address from the address bar and paste it here.",
+        "amazon": "Sign in to Amazon in your browser. When it lands on the Amazon home page, copy the full address from the address bar and paste it here.",
+        "humble": "Sign in to humblebundle.com in your browser. Then open the developer tools (F12), go to Storage (Firefox) or Application (Chrome) > Cookies > https://www.humblebundle.com, and copy the value of the cookie named _simpleauth_sess. Paste it here. It is your login, so do not share it.",
+        "itch": "Sign in to itch.io in your browser and open your API keys page (Settings > API keys). Click \"Generate new API key\", then \"View\" next to the new key, and paste the key here. You can revoke it on the same page at any time."
+      },
+      "placeholder": {
+        "epic": "authorizationCode",
+        "gog": "https://embed.gog.com/on_login_success?origin=client&code=...",
+        "amazon": "https://www.amazon.com/?openid.assoc_handle=...&openid.oa2.authorization_code=...",
+        "humble": "_simpleauth_sess cookie value",
+        "itch": "itch.io API key"
+      }
+    }
+  },
   "globParser": {
     "inputTitle": "Search glob",
     "inputPlaceholder": "${title}.@(iso|ISO)",

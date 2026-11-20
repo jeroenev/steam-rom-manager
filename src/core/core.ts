@@ -12,6 +12,7 @@ import { PreviewBuilder } from "./preview-builder";
 import { SteamWriter } from "./steam-writer";
 import { LibraryReader } from "./library-reader";
 import { UiSupport } from "./ui-support";
+import { StoresStore } from "./stores-store";
 
 export interface CoreOptions {
   logger: Logger;
@@ -34,6 +35,7 @@ export class Core {
   readonly preview: PreviewEngine;
   readonly library: LibraryReader;
   readonly support: UiSupport;
+  readonly stores: StoresStore;
 
   constructor({ logger, fetch = getDefaultFetch(), onNewImage }: CoreOptions) {
     this.settings = new SettingsStore(logger);
@@ -47,6 +49,7 @@ export class Core {
     this.writer = new SteamWriter(logger, this.parsers, this.settings);
     this.library = new LibraryReader(logger, this.parsers);
     this.support = new UiSupport(fetch);
+    this.stores = new StoresStore(logger, this.settings, this.parsers);
     this.preview = new PreviewEngine({
       logger,
       parsers: this.parsers,
@@ -107,6 +110,14 @@ export class Core {
         this.fuzzy.load({ refresh: download().download }),
       ),
     };
+    // The store accounts the Store Account parsers list: libraries that got
+    // old are fetched again in the background. (The CLI's parsers fetch
+    // what they need when they run.)
+    if (refresh) {
+      this.ready.parsers
+        .then(() => this.stores.refreshInBackground())
+        .catch(() => undefined);
+    }
     return this.ready;
   }
 

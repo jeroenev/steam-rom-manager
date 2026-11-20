@@ -115,6 +115,19 @@ export const rpcApi = {
       "submitBugReport",
     ],
   },
+  // The store accounts of Store Account parsers; changes arrive as
+  // "stores:changed" events. Sign-ins run in main (the sign-in window, the
+  // user's browser): no secret ever reaches the UI.
+  stores: {
+    sync: ["status", "statuses", "beginLogin"],
+    async: [
+      "loginWithWindow",
+      "openSignInPage",
+      "submitPaste",
+      "refresh",
+      "signOut",
+    ],
+  },
   // Window and OS integration; only the Electron main process provides it.
   app: {
     sync: ["windowInfo"],
@@ -164,6 +177,8 @@ export interface RpcEventMap {
   "writer:progress": { update: string; batch: number };
   "providers:event": { id: string; event: string; data: any };
   "providers:stopped": null;
+  // A store account's sign-in or library changed (a store key).
+  "stores:changed": { store: string };
   ready: string; // a store name, once it has loaded
 }
 

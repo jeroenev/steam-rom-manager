@@ -77,6 +77,7 @@ export function hostCore(
     builder: core.builder,
     library: core.library,
     support: core.support,
+    stores: core.stores,
     writer: {
       save: (previewData: any, onlineImages: any, options: any) =>
         core.writer.save(previewData, onlineImages, options, (progress) =>
@@ -166,6 +167,7 @@ export function hostCore(
     .observeList()
     .subscribe((list) => emit("fuzzy:list", { totalGames: list.totalGames }));
   core.providers.stopEvent.subscribe(() => emit("providers:stopped", null));
+  core.stores.onChange((store) => emit("stores:changed", { store }));
 
   for (const [name, promise] of Object.entries(core.ready ?? {})) {
     promise.then(() => {

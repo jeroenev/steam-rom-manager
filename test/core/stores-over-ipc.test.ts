@@ -1,0 +1,245 @@
+// The store accounts over IPC: StoresService (renderer) to the StoresStore
+// in main, with a fake host (fake itch.io and GOG servers, a fake sign-in
+// window). The UI sees the account change as it signs in, refreshes and
+// signs out, and never gets a secret.
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import * as fs from "fs";
+import * as paths from "../../src/paths";
+import { Core } from "../../src/core/core";
+import { hostCore } from "../../src/core/rpc-host";
+import { CoreClient } from "../../src/renderer/core-client";
+import { StoresService } from "../../src/renderer/services/stores.service";
+import {
+  LoginCancelled,
+  readOnlyStoreHost,
+  setStoreHost,
+} from "../../src/lib/stores/host";
+import * as refresh from "../../src/lib/stores/refresh";
+import { STORE_KEYS } from "../../src/lib/stores/types";
+import { makeConfig, makeSettings } from "../helpers/fixtures";
+import { makeLogger, settleCoresAfterEach } from "../helpers/services-harness";
+import { makeRpcPair } from "../helpers/rpc-pair";
+import { makeFakeNetwork } from "../helpers/fake-network";
+import { FakeStoreHost, storeFixture } from "../helpers/fake-store-host";
+
+const ITCH_KEY = "AbC123";
+
+const host = new FakeStoreHost(({ url, init }) => {
+  const u = new URL(url);
+  if (u.host === "api.itch.io") {
+    if (init.headers?.Authorization !== `Bearer ${ITCH_KEY}`) {
+      return { body: storeFixture("itch", "invalid_key.json") };
+    }
+    if (u.pathname === "/profile") {
+      return { body: storeFixture("itch", "profile.json") };
+    }
+    return {
+      body: storeFixture(
+        "itch",
+        u.searchParams.get("page") === "1"
+          ? "owned_keys_page1.json"
+          : "owned_keys_empty.json",
+      ),
+    };
+  }
+  if (u.host === "auth.gog.com") {
+    return u.searchParams.get("code") === "good-code"
+      ? {
+          body: {
+            access_token: "access-1",
+            refresh_token: "refresh-1",
+            user_id: "48628349957132247",
+            expires_in: 3600,
+          },
+        }
+      : { status: 400, body: { error: "invalid_grant" } };
+  }
+  if (u.host === "users.gog.com") {
+    return { body: storeFixture("gog", "user.json") };
+  }
+  if (u.pathname === "/account/getFilteredProducts") {
+    return {
+      body: storeFixture(
+        "gog",
+        u.searchParams.get("page") === "1"
+          ? "products_page1.json"
+          : "products_page2.json",
+      ),
+    };
+  }
+  return { status: 404 };
+});
+
+describe("store accounts over IPC", () => {
+  const settled = settleCoresAfterEach(afterEach);
+  const events: string[] = [];
+
+  beforeEach(() => {
+    setStoreHost(host);
+    host.canRefresh = true;
+    host.opened.length = 0;
+    delete host.openLoginWindow;
+    events.length = 0;
+    fs.rmSync(paths.userSettings, { force: true });
+    fs.rmSync(paths.userConfigurations, { force: true });
+  });
+  afterEach(async () => {
+    for (const store of STORE_KEYS) {
+      await refresh.deleteAccount(store);
+    }
+  });
+  afterAll(() => setStoreHost(readOnlyStoreHost));
+
+  async function makeService() {
+    const core = new Core({
+      logger: makeLogger().service,
+      fetch: makeFakeNetwork(),
+    });
+    settled(core).start({ presets: false, refresh: false });
+    const { host: hostSide, client } = makeRpcPair();
+    hostCore(core, hostSide);
+    const coreClient = new CoreClient(client);
+    coreClient.on("stores:changed", ({ store }) => events.push(store));
+    await core.ready.parsers;
+    return { core, service: new StoresService({ client: coreClient } as any) };
+  }
+
+  // Lets events cross (they're delivered on later turns).
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  it("itch.io: signs in with a pasted key, refreshes, signs out", async () => {
+    const { service } = await makeService();
+    const before = service.status("itch");
+    expect(before).toMatchObject({
+      store: "itch",
+      available: true,
+      signedIn: false,
+      windowLogin: false,
+      canRefresh: true,
+      secretsWarning: false,
+    });
+    expect(before.paste?.instructions).toContain("API keys page");
+
+    const paste = service.beginLogin("itch");
+    expect(paste?.url).toBe("https://itch.io/user/settings/api-keys");
+    await service.openSignInPage("itch");
+    expect(host.opened).toEqual(["https://itch.io/user/settings/api-keys"]);
+
+    await expect(service.submitPaste("itch", "not a key")).rejects.toThrow(
+      "not an itch.io API key",
+    );
+    const message = await service.submitPaste("itch", ` ${ITCH_KEY}\n`);
+    expect(message).toMatch(
+      /^Signed in to itch\.io as leafo\. The account owns \d+ games\.$/,
+    );
+    await settle();
+    expect(events).toContain("itch");
+
+    const after = service.status("itch");
+    expect(after).toMatchObject({
+      signedIn: true,
+      accountName: "leafo",
+      lastError: null,
+      needsSignIn: false,
+      refreshing: false,
+    });
+    expect(after.gameCount).toBeGreaterThan(0);
+    // No secret reaches the UI.
+    expect(JSON.stringify(after)).not.toContain(ITCH_KEY);
+
+    expect(await service.refresh("itch")).toMatch(
+      /^itch\.io: the account owns \d+ games\.$/,
+    );
+    expect(await service.signOut("itch")).toBe("Signed out of itch.io.");
+    expect(service.status("itch")).toMatchObject({
+      signedIn: false,
+      gameCount: null,
+    });
+  });
+
+  it("GOG: signs in with the sign-in window; closing it is no error", async () => {
+    const { service } = await makeService();
+    expect(service.status("gog").windowLogin).toBe(false);
+    await expect(service.loginWithWindow("gog")).rejects.toThrow(
+      "can't open a sign-in window",
+    );
+
+    host.openLoginWindow = async () => {
+      throw new LoginCancelled("Sign-in window closed");
+    };
+    expect(service.status("gog").windowLogin).toBe(true);
+    expect(await service.loginWithWindow("gog")).toBeNull();
+    expect(service.status("gog").signedIn).toBe(false);
+
+    const asked: string[] = [];
+    host.openLoginWindow = async (pending) => {
+      asked.push(pending.startUrl);
+      return {
+        finalUrl:
+          "https://embed.gog.com/on_login_success?origin=client&code=good-code",
+      };
+    };
+    const message = await service.loginWithWindow("gog");
+    expect(asked[0]).toMatch(/^https:\/\/auth\.gog\.com\/auth\?/);
+    expect(message).toMatch(
+      /^Signed in to GOG as .+\. The account owns \d+ games\.$/,
+    );
+    expect(service.status("gog")).toMatchObject({
+      signedIn: true,
+      lastError: null,
+    });
+  });
+
+  it("stores that come later say so; unknown stores are refused", async () => {
+    const { service } = await makeService();
+    expect(service.status("epic")).toMatchObject({
+      available: false,
+      windowLogin: false,
+      paste: null,
+    });
+    expect(() => service.status("steam")).toThrow("Unknown store: steam");
+    await expect(service.refresh("epic")).rejects.toThrow(
+      "comes with a later version of SRM",
+    );
+  });
+
+  it("at start, fetches the old libraries of the stores enabled parsers use, unless offline", async () => {
+    const config = (store: string, disabled = false) =>
+      makeConfig({
+        parserType: "Store Account",
+        configTitle: store,
+        parserId: store,
+        parserInputs: { storeAccount: store },
+        disabled,
+      });
+    fs.writeFileSync(
+      paths.userConfigurations,
+      JSON.stringify([config("itch"), config("gog", true)]),
+    );
+    // Signed in to both, libraries never fetched.
+    await refresh.completeLogin(refresh.pendingLogin("itch"), {
+      pasted: ITCH_KEY,
+    });
+    await refresh.completeLogin(refresh.pendingLogin("gog"), {
+      pasted: "good-code",
+    });
+    fs.writeFileSync(
+      paths.userSettings,
+      JSON.stringify(makeSettings({ offlineMode: true })),
+    );
+    const offline = await makeService();
+    expect(offline.core.stores.storesInUse()).toEqual(["itch"]);
+    await offline.core.stores.refreshInBackground();
+    expect(offline.service.status("itch").gameCount).toBeNull();
+
+    fs.writeFileSync(
+      paths.userSettings,
+      JSON.stringify(makeSettings({ offlineMode: false })),
+    );
+    const online = await makeService();
+    await online.core.stores.refreshInBackground();
+    expect(online.service.status("itch").gameCount).toBeGreaterThan(0);
+    // (its parser is disabled)
+    expect(online.service.status("gog").gameCount).toBeNull();
+  });
+});
