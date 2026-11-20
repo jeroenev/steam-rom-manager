@@ -1,12 +1,12 @@
 import { ParserInfo, GenericParser, ParsedData } from "../../models";
 import { APP } from "../../variables";
-import * as fs from "fs-extra";
 import * as os from "os";
-import * as path from "path";
-import { glob } from "glob";
-import * as json from "../helpers/json";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
-import languageEncoding from "detect-file-encoding-and-language";
+import { installLocations } from "../helpers/windows/installed-programs";
+import {
+  gameFolders,
+  installedGames,
+  powershellPath,
+} from "./ea-desktop/installed-games";
 
 export class EADesktopParser implements GenericParser {
   private get lang() {
@@ -43,191 +43,21 @@ export class EADesktopParser implements GenericParser {
         return reject(this.lang.errors.eaNotCompatible);
       }
       try {
-        let eaInstallDir =
-          inputs.eaGamesDir || "C:\\Program Files (x86)\\EA Games";
-        const xmlParser = new XMLParser();
-        let installDataFiles: string[] = await glob(
-          "*/__Installer/installerdata.xml",
-          { dot: true, cwd: eaInstallDir, absolute: true },
+        // Games in the folder field (or EA's default folders) and wherever
+        // Windows' installed programs say the EA app installed one.
+        const folders = await gameFolders({
+          gamesDir: inputs.eaGamesDir,
+          installLocations: await installLocations(),
+        });
+        const { success, failed } = await installedGames(
+          folders,
+          !!inputs.eaLauncherMode,
         );
-        let finalData: ParsedData = {
-          executableLocation: `C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
-          success: [],
-          failed: [],
-        };
-
-        for (let installDataFile of installDataFiles) {
-          let gameDir = path.join(path.dirname(installDataFile), "..");
-          let xmlBuffer = fs.readFileSync(installDataFile);
-          // Parsers run in the main process: the library's Node build takes
-          // a Buffer (or path); its browser build took a Blob.
-          const fileInfo = await languageEncoding(xmlBuffer);
-
-          let xmlString;
-          if (fileInfo.encoding == "UTF-8") {
-            xmlString = xmlBuffer.toString();
-          } else if (fileInfo.encoding == "UTF-16LE") {
-            xmlString = xmlBuffer.toString("utf16le");
-          } else {
-            // (one odd file: that game fails, not the whole parser)
-            finalData.failed.push(
-              `Unrecognized file encoding for ${installDataFile}.`,
-            );
-            continue;
-          }
-
-          // (validate() returns true, or an error object, which is truthy too)
-          if (XMLValidator.validate(xmlString, {}) === true) {
-            let parsedData = xmlParser.parse(xmlString);
-            let title = "";
-            let runtimePath = "";
-            let runtime;
-            let contentID;
-            let appID = "";
-            let commandArgs;
-            if (
-              json.caselessHas(parsedData, [
-                ["DiPManifest"],
-                ["gameTitles"],
-                ["gameTitle"],
-              ]) &&
-              json.caselessHas(parsedData, [["DiPManifest"], ["runtime"]]) &&
-              json.caselessHas(parsedData, [
-                ["DiPManifest"],
-                ["contentIDs"],
-                ["contentID"],
-              ])
-            ) {
-              let gameTitle = json.caselessGet(parsedData, [
-                ["DiPManifest"],
-                ["gameTitles"],
-                ["gameTitle"],
-              ]);
-
-              if (Array.isArray(gameTitle) && gameTitle.length) {
-                title = String(gameTitle[0]);
-              } else {
-                title = String(gameTitle);
-              }
-              runtime = json.caselessGet(
-                parsedData,
-                [["DiPManifest"], ["runtime"], ["launcher"]],
-                true,
-              );
-
-              contentID = json.caselessGet(parsedData, [
-                ["DiPManifest"],
-                ["contentIDs"],
-                ["contentID"],
-              ]);
-            } else if (
-              json.caselessHas(parsedData, [
-                ["game"],
-                ["metadata"],
-                ["localeInfo"],
-              ]) &&
-              json.caselessHas(parsedData, [
-                ["game"],
-                ["contentIDs"],
-                ["contentID"],
-              ])
-            ) {
-              if (
-                json.caselessHas(parsedData, [
-                  ["game"],
-                  ["runtime"],
-                  ["launcher"],
-                ])
-              ) {
-                runtime = json.caselessGet(
-                  parsedData,
-                  [["game"], ["runtime"], ["launcher"]],
-                  true,
-                );
-              }
-
-              let localeInfo = json.caselessGet(parsedData, [
-                ["game"],
-                ["metadata"],
-                ["localeInfo"],
-              ]);
-              if (Array.isArray(localeInfo) && localeInfo.length) {
-                title = String(localeInfo[0].title);
-              } else {
-                title = String(localeInfo.title);
-              }
-              contentID = json.caselessGet(parsedData, [
-                ["game"],
-                ["contentIDs"],
-                ["contentID"],
-              ]);
-            } else {
-              finalData.failed.push(
-                `Game in ${gameDir}, ${title}, failed because it's installer_data.xml was in an unrecognizable format`,
-              );
-              continue;
-            }
-
-            if (!runtime) {
-              //finalData.failed.push(`Game in ${gameDir}, ${title}, failed because it's installerdata.xml had no runtime`);
-              //default, executable has same name as directory but stripped of whitespace, and lives in Binaries.
-
-              const executable = `${gameDir.split("\\").pop().replaceAll(/\s/g, "")}.exe`;
-              const executablePaths = [
-                path.join(gameDir, "Binaries", executable),
-                path.join(gameDir, executable),
-              ];
-
-              let foundRuntime = false;
-              for (let executablePath of executablePaths) {
-                if (fs.existsSync(executablePath)) {
-                  foundRuntime = true;
-                  runtime = {
-                    filePath: executablePath,
-                    parameters: "",
-                  };
-                  break;
-                }
-              }
-              if (!foundRuntime) {
-                finalData.failed.push(
-                  `Game ${title} failed because its installerdata.xml contained no runtime and the default runtime paths ${executablePaths} does not exist`,
-                );
-                continue;
-              }
-            }
-
-            if (runtime && Array.isArray(runtime) && runtime.length) {
-              runtimePath = json.caselessGet(runtime[0], [["filePath"]]);
-              commandArgs = json.caselessGet(runtime[0], [["parameters"]]);
-            } else if (json.caselessHas(runtime, [["filePath"]])) {
-              runtimePath = json.caselessGet(runtime, [["filePath"]]);
-              commandArgs = json.caselessGet(runtime, [["parameters"]]);
-            }
-            if (Array.isArray(contentID) && contentID.length) {
-              appID = String(contentID[0]);
-            } else {
-              appID = String(contentID);
-            }
-            if (title && appID && runtimePath) {
-              finalData.success.push({
-                extractedTitle: title,
-                extractedAppId: appID,
-                launchOptions: `-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"origin2://game/launch/?offerIds=${appID}\\""`,
-                filePath: path.join(
-                  gameDir,
-                  runtimePath.replace(/^\[.*?\]/, ""),
-                ),
-                fileLaunchOptions: commandArgs,
-              });
-            } else {
-              finalData.failed.push(
-                `Game with title ${title} failed. AppID: ${appID}, runtimePath: ${runtimePath}`,
-              );
-            }
-          }
-        }
-        resolve(finalData);
+        resolve({
+          executableLocation: powershellPath(process.env.SystemRoot),
+          success,
+          failed,
+        });
       } catch (err) {
         reject(this.lang.errors.fatalError__i.interpolate({ error: err }));
       }
