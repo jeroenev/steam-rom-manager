@@ -10,6 +10,7 @@ import {
   UserExceptions,
 } from "../models";
 import { FileParser } from "../lib/file-parser";
+import { storeLibraryStamp } from "../lib/parsers/store-account.parser";
 import { ParseCache } from "./parse-cache";
 import { FuzzyMatcher } from "../lib/fuzzy-matcher";
 import { VariableParser } from "../lib/variable-parser";
@@ -487,14 +488,14 @@ export class ParsersStore {
       settings.environmentVariables,
       this.variablesVersion,
     ]);
-    const keys = new Map(
-      valid.map((c) => [c.parserId, JSON.stringify(c) + global]),
-    );
+    const keyOf = (c: UserConfiguration) =>
+      JSON.stringify(c) + global + this.dataStamp(c);
+    const keys = new Map(valid.map((c) => [c.parserId, keyOf(c)]));
     const exceptions = this.exceptions;
     const plan = this.parseCache.plan(
       valid.map((c) => ({ parserId: c.parserId, key: keys.get(c.parserId) })),
       exceptions,
-      configs.map((c) => JSON.stringify(c) + global),
+      configs.map(keyOf),
     );
     const toParse = valid.filter((c) => plan.parse.includes(c.parserId));
     const fresh = toParse.length
@@ -502,7 +503,12 @@ export class ParsersStore {
           .parsedConfigs
       : [];
     toParse.forEach((c, i) =>
-      this.parseCache.store(c.parserId, keys.get(c.parserId), fresh[i], exceptions),
+      this.parseCache.store(
+        c.parserId,
+        keys.get(c.parserId),
+        fresh[i],
+        exceptions,
+      ),
     );
     const parsedConfigs = valid.map(
       (c) => plan.reuse.get(c.parserId) ?? fresh[toParse.indexOf(c)],
@@ -517,6 +523,15 @@ export class ParsersStore {
       skipped,
       reparsed: toParse.length,
     };
+  }
+
+  // What a parser's result depends on besides its settings and the global
+  // inputs: a Store Account parser's library as last fetched, so a library
+  // refreshed since is parsed again.
+  private dataStamp(config: UserConfiguration) {
+    return config.parserType === "Store Account"
+      ? storeLibraryStamp(config.parserInputs)
+      : "";
   }
 
   parseSteamDir(steamDirInput: string) {

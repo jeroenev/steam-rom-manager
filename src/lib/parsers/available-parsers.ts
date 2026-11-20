@@ -36,6 +36,14 @@ export const availableParserInputs: Record<ParserType, string[]> = {
   "Non-SRM Shortcuts": [],
   "GitHub Launcher": ["githubLauncherDir"],
   "Quiver Launcher": ["quiverLauncherDir"],
+  // (its "account" input, storeAccountStatus, isn't a setting)
+  "Store Account": [
+    "storeAccount",
+    "storeInstallWith",
+    "storeSkipPrereleases",
+    "storeSkipInstalledElsewhere",
+    "storeSkipSteamInstalled",
+  ],
 };
 export const availableParserInputsInfo: Record<
   ParserType,
@@ -90,6 +98,23 @@ export const availableParserInputsInfo: Record<
   "Non-SRM Shortcuts": {},
   "GitHub Launcher": { githubLauncherDir: { inputType: "dir" } },
   "Quiver Launcher": { quiverLauncherDir: { inputType: "dir" } },
+  "Store Account": {
+    storeAccount: { inputType: "select" },
+    storeInstallWith: { inputType: "select" },
+    storeSkipPrereleases: { inputType: "toggle" },
+    storeSkipInstalledElsewhere: { inputType: "toggle" },
+    storeSkipSteamInstalled: { inputType: "toggle" },
+  },
+};
+
+// What a new parser of a type starts with besides its inputs' initial
+// values (the editor and `srm create-parser` apply it).
+export const parserTypeDefaults: Partial<
+  Record<ParserType, { steamCategories?: string[] }>
+> = {
+  // Steam has no "not installed" state for a shortcut: its collection is
+  // where that shows.
+  "Store Account": { steamCategories: ["Not installed"] },
 };
 
 export const availableParsers: ParserType[] = Object.keys(
@@ -112,6 +137,7 @@ export const superTypes: Record<SuperType, ParserType[]> = {
     "Battle.net",
     "GitHub Launcher",
     "Quiver Launcher",
+    "Store Account",
   ],
 };
 

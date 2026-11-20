@@ -373,6 +373,27 @@
       "eaNotCompatible": "> EA Desktop Parser only supports Windows."
     }
   },
+  "storeAccountParser": {
+    "storeInputTitle": "Store",
+    "storePlaceholder": "Choose a store",
+    "accountInputTitle": "Account",
+    "installWithInputTitle": "A game that isn't installed opens",
+    "installWith": {
+      "auto": "The store's launcher, else Heroic (Linux), else the store page",
+      "heroic": "Heroic first (Linux), else the store's launcher or page",
+      "browser": "The store page in your browser"
+    },
+    "skipPrereleasesInputTitle": "Leave out betas, demos and playtests",
+    "skipInstalledElsewhereInputTitle": "Leave out games installed through another launcher",
+    "skipSteamInstalledInputTitle": "Leave out games Steam has installed",
+    "errors": {
+      "noStore": "> Choose the store whose account this parser lists.",
+      "unavailable__i": "> Signing in to ${store} comes with a later version of SRM.",
+      "notSignedIn__i": "> Not signed in to ${store}. Sign in under **Account** in this parser's settings.",
+      "noLibrary__i": "> The games of the ${store} account haven't been fetched: ${error}",
+      "fatalError__i": "> Store Account parser failed with fatal error:\n ${error}"
+    }
+  },
   "globParser": {
     "inputTitle": "Search glob",
     "inputPlaceholder": "${title}.@(iso|ISO)",

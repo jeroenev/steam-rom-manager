@@ -1,0 +1,34 @@
+# Store Account Parser Specific Inputs
+
+## Store
+
+The store whose account this parser lists. Use another Store Account parser for each further store.
+
+## Account
+
+Your sign-in to the store, and its games as SRM last fetched them. This is not a setting of the parser: it is the same for every parser of this store, and it is never saved with the parser.
+
+- **Sign in** opens the store's own sign-in page in a window of SRM's. When you have signed in, the window closes and SRM fetches the account's games.
+- **Sign in with your browser** opens the sign-in page in your own browser (useful with a password manager, or when the sign-in window has trouble). Then paste what the store shows, as the box below the buttons says:
+  - **GOG**: the address of the blank page GOG ends on (it starts with `https://embed.gog.com/on_login_success`), or the code in it.
+  - **itch.io**: an API key. On itch.io, open Settings > API keys, click "Generate new API key", then "View", and copy the key. You can revoke it there at any time.
+- **Refresh library** fetches the account's games now. SRM also fetches them by itself when they are older than 6 hours: when the app starts, and before this parser runs. After a failed fetch it waits 15 minutes before trying again, and the games fetched before are used meanwhile.
+- **Sign out** removes the sign-in and the list of games from SRM.
+
+A fetch never makes the list shrink by mistake: an empty list never replaces a list with games, and a fetch SRM made by itself is not used when it lists less than half the games of the last one (with 20 games or more). Refresh the library yourself to take such a list.
+
+With SRM's **Offline mode** on, libraries are not fetched by themselves; the parser uses the games fetched before.
+
+## A game that isn't installed opens
+
+- **The store's launcher** (default): the store's launcher when it is installed, else Heroic (Linux) when it is signed in to the store, else the store page.
+- **Heroic first**: Heroic (Linux) when it is signed in to the store, else the store's launcher, else the store page.
+- **The store page in your browser**: always the game's page on the store's site.
+
+## Games left out
+
+A game installed through the store's own launcher is always left out (it is matched by the store's id for the game): add installed games with the parser for that launcher.
+
+- **Leave out betas, demos and playtests** (on by default): titles naming a beta, demo, playtest or test server, as whole words ("Barony (Beta)", but not "Demon's Tilt").
+- **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match).
+- **Leave out games Steam has installed** (on by default): a game Steam itself has installed, with the same title.

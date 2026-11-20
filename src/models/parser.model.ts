@@ -19,23 +19,22 @@ export interface StringMap {
 */
 
 export const TITLE_MODIFIER_KEYS = [
-  "extracted", 
+  "extracted",
   "postShortcutPassthrough",
   "postCustomVariables",
   "postFuzzy",
   "postTitleModifier",
-  "final"
+  "final",
 ] as const; // ordered title waterfall
-export type TitleModifierKey = typeof TITLE_MODIFIER_KEYS[number];
+export type TitleModifierKey = (typeof TITLE_MODIFIER_KEYS)[number];
 export type TitleModifiers = Record<TitleModifierKey, string | null>;
-
 
 export interface ParsedUserConfigurationFile {
   executableLocation: string;
   modifiedExecutableLocation: string;
   startInDirectory: string;
   filePath: string;
-  titles: TitleModifiers
+  titles: TitleModifiers;
   sortAsTitle: string; // not actually part of the title waterfall
   argumentString: string;
   // Resolved Steam Play compat tool for this specific file. Seeded from the
@@ -84,19 +83,32 @@ const inputTypes = StringLiteralArray([
   "toggle",
   "select",
   "multiselect",
+  // Not a setting: the sign-in and library of the store account a Store
+  // Account parser lists, shown in the parser editor. Never saved with the
+  // parser (userConfigurations.json goes into bug reports), so it's left
+  // out of availableParserInputs and the schema.
+  "account",
 ]);
 export type ParserInputType = (typeof inputTypes)[number];
+
+// Whether an input of this type is part of the parser's settings.
+export function isSavedInput(inputType: ParserInputType) {
+  return inputType !== "account";
+}
+
 export interface ParserInputField {
   [inputKey: string]: {
     label: string;
     placeholder?: string;
     inputType: ParserInputType;
     allowedValues?: SelectItem[];
-    initialValue?: string[] | string;
+    initialValue?: string[] | string | boolean;
     hidden?: boolean;
     // Only show this input when another parser input equals a given value
     // (e.g. show the Steam API key only when the fetch strategy is "webapi").
     hiddenUnless?: { field: string; value: string };
+    // An "account" input: the parser input that names its store.
+    accountOf?: string;
     required?: boolean;
     important?: boolean;
     info?: string;
@@ -129,7 +141,7 @@ export interface ParserVariableData {
   startInDirectory: string;
   steamDirectory: string;
   romDirectory: string;
-  titles: TitleModifiers,
+  titles: TitleModifiers;
   filePath: string;
   steamDirectoryGlobal: string;
   romsDirectoryGlobal: string;
@@ -193,7 +205,8 @@ export type ParserType =
   | "EA Desktop"
   | "Battle.net"
   | "GitHub Launcher"
-  | "Quiver Launcher";
+  | "Quiver Launcher"
+  | "Store Account";
 export type SuperType = "Manual" | "ArtworkOnly" | "ROM" | "Platform";
 
 export interface ParserInfo {

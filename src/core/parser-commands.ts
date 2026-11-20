@@ -1,5 +1,10 @@
 import * as _ from "lodash";
-import { ParserInfo, ParserType, UserConfiguration } from "../models";
+import {
+  ParserInfo,
+  ParserType,
+  UserConfiguration,
+  isSavedInput,
+} from "../models";
 import * as parserInfo from "../lib/parsers/available-parsers";
 // (Node only: this module runs in the main process)
 import { parsers } from "../lib/parsers";
@@ -276,6 +281,10 @@ export function defaultConfig(parserType: ParserType): UserConfiguration {
   ).getDefaultValues() as UserConfiguration;
   config.parserType = parserType;
   resetParserInputs(config);
+  const defaults = parserInfo.parserTypeDefaults[parserType];
+  if (defaults?.steamCategories) {
+    config.steamCategories = [...defaults.steamCategories];
+  }
   return config;
 }
 
@@ -283,6 +292,7 @@ function resetParserInputs(config: UserConfiguration) {
   const inputs = parserInfos()[config.parserType]?.inputs ?? {};
   config.parserInputs = {};
   for (const [name, input] of Object.entries(inputs)) {
+    if (!isSavedInput(input.inputType)) continue;
     config.parserInputs[name] =
       input.initialValue !== undefined
         ? (_.cloneDeep(input.initialValue) as any)
