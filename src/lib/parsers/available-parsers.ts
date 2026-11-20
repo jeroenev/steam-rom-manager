@@ -31,7 +31,12 @@ export const availableParserInputs: Record<ParserType, string[]> = {
   Steam: ["appTypes", "onlyInstalled", "parseStrategy", "steamApiKey"],
   UPlay: ["uplayDir", "uplayLauncherMode"],
   UWP: ["UWPDir", "UWPLauncherMode"],
-  "EA Desktop": ["eaGamesDir", "eaLauncherMode"],
+  "EA Desktop": [
+    "eaGamesDir",
+    "eaLauncherMode",
+    "eaWaitForExit",
+    "eaSteamOverlay",
+  ],
   "Battle.net": ["battleExeOverride"],
   "Non-SRM Shortcuts": [],
   "GitHub Launcher": ["githubLauncherDir"],
@@ -85,6 +90,8 @@ export const availableParserInputsInfo: Record<
   "EA Desktop": {
     eaGamesDir: { inputType: "dir" },
     eaLauncherMode: { inputType: "toggle" },
+    eaWaitForExit: { inputType: "toggle" },
+    eaSteamOverlay: { inputType: "toggle" },
   },
   "Battle.net": { battleExeOverride: { inputType: "path" } },
   "Non-SRM Shortcuts": {},

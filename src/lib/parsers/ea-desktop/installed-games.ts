@@ -8,6 +8,7 @@ import { glob } from "glob";
 import * as json from "../../helpers/json";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import languageEncoding from "detect-file-encoding-and-language";
+import { eaWaitForExitWrapper } from "../../launch-wrapper/launchers";
 
 // Where the EA app installs games unless told otherwise. Searched when the
 // parser's folder field is empty; the older default first, so games SRM
@@ -89,9 +90,15 @@ function installDataFile(gameDir: string) {
 
 // The games in `folders`, each once (by its first content id). In launcher
 // mode a game is listed without an exe: origin2:// only needs its content id.
+// With `waitForExit` (launcher mode, Windows), a game's shortcut runs SRM's
+// launch script, which waits for the game (see eaWaitForExitWrapper).
 export async function installedGames(
   folders: string[],
   launcherMode: boolean,
+  {
+    waitForExit = false,
+    steamOverlay = false,
+  }: { waitForExit?: boolean; steamOverlay?: boolean } = {},
 ): Promise<{ success: ParsedSuccess[]; failed: string[] }> {
   const success: ParsedSuccess[] = [];
   const failed: string[] = [];
@@ -128,12 +135,28 @@ export async function installedGames(
     // (two folders can hold the same game, e.g. a copy left behind)
     if (contentIds.has(game.contentId)) continue;
     contentIds.add(game.contentId);
+    const launchWrapper =
+      launcherMode && waitForExit
+        ? eaWaitForExitWrapper(
+            {
+              contentId: game.contentId,
+              folder: gameDir,
+              // (none when the game's exe wasn't found)
+              exeName:
+                game.filePath !== gameDir
+                  ? path.win32.basename(game.filePath)
+                  : undefined,
+            },
+            { steamOverlay },
+          )
+        : undefined;
     success.push({
       extractedTitle: game.title,
       extractedAppId: game.contentId,
       launchOptions: `-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"origin2://game/launch/?offerIds=${game.contentId}\\""`,
       filePath: game.filePath,
       fileLaunchOptions: game.args,
+      ...(launchWrapper && { launchWrapper }),
     });
   }
   return { success, failed };

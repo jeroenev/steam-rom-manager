@@ -10,6 +10,7 @@ import {
   parseInstallerData,
   powershellPath,
 } from "../../src/lib/parsers/ea-desktop/installed-games";
+import { parserScript } from "../../src/lib/launch-wrapper";
 import { tempDir } from "../helpers/fixtures";
 
 // Windows' installed-programs lists, as the parser sees them in these tests
@@ -356,6 +357,65 @@ describe("games", () => {
     ]);
   });
 
+  it("waits for the game to exit: the launch goes through SRM's launch script, which watches the game's folder", async () => {
+    const wait = game(path.join(dir, "Wait"), installerData("Wait", "555"));
+    const folder = path.win32.normalize(wait);
+    const which = ["-GameFolder", folder, "-ExeName", "Wait.exe"];
+    const { success } = await installedGames([wait], true, {
+      waitForExit: true,
+    });
+    expect(success[0].launchWrapper).toEqual({
+      launch: { file: "origin2://game/launch/?offerIds=555" },
+      game: { folder, exeName: "Wait.exe", startTimeoutMinutes: 10 },
+      preLaunch: [{ script: parserScript("ea-app-start.ps1"), args: which }],
+      postLaunch: [
+        { script: parserScript("ea-app-start.ps1"), args: ["-Mark"] },
+      ],
+      postExit: [{ script: parserScript("ea-app-stop.ps1"), args: which }],
+    });
+    // (the launch's own link and command stay as they were)
+    expect(success[0].launchOptions).toContain("offerIds=555");
+
+    // the Steam overlay setting: an open EA app is closed before the launch
+    const overlay = await installedGames([wait], true, {
+      waitForExit: true,
+      steamOverlay: true,
+    });
+    expect(overlay.success[0].launchWrapper.preLaunch).toEqual([
+      {
+        script: parserScript("ea-app-start.ps1"),
+        args: [...which, "-Restart"],
+      },
+    ]);
+
+    // a game whose exe wasn't found: watched by its folder alone
+    const { success: noExeGame } = await installedGames([noExe], true, {
+      waitForExit: true,
+    });
+    expect(noExeGame[0].launchWrapper.game).toEqual({
+      folder: path.win32.normalize(noExe),
+      startTimeoutMinutes: 10,
+    });
+    expect(noExeGame[0].launchWrapper.postExit[0].args).toEqual([
+      "-GameFolder",
+      path.win32.normalize(noExe),
+    ]);
+  });
+
+  it("only waits for the game to exit when launching via the EA app", async () => {
+    const wait = game(path.join(dir, "Wait"), installerData("Wait", "555"));
+    for (const [launcherMode, waitForExit] of [
+      [false, true],
+      [true, false],
+    ]) {
+      const { success } = await installedGames([wait], launcherMode, {
+        waitForExit,
+        steamOverlay: true,
+      });
+      expect(success[0]).not.toHaveProperty("launchWrapper");
+    }
+  });
+
   it("lists a game once, by its first content id", async () => {
     const first = game(path.join(dir, "First"), installerData("First", "333"));
     const copy = game(path.join(dir, "Copy"), installerData("Copy", "333"));
@@ -449,5 +509,27 @@ describe.runIf(os.type() === "Windows_NT")("EA Desktop parser", () => {
       ["Game One", expect.stringContaining("offerIds=111")],
       ["Game Two", expect.stringContaining("offerIds=222")],
     ]);
+  });
+
+  it("passes its wait-for-exit and Steam overlay settings on, in launcher mode", async () => {
+    const parse = (inputs: object) =>
+      new EADesktopParser().execute([], { eaGamesDir: dir, ...inputs });
+    const waiting = await parse({
+      eaLauncherMode: true,
+      eaWaitForExit: true,
+      eaSteamOverlay: true,
+    });
+    expect(waiting.success).toHaveLength(2);
+    for (const s of waiting.success) {
+      expect(s.launchWrapper.launch.file).toBe(
+        `origin2://game/launch/?offerIds=${s.extractedAppId}`,
+      );
+      expect(s.launchWrapper.preLaunch[0].args).toContain("-Restart");
+    }
+    const exeMode = await parse({ eaLauncherMode: false, eaWaitForExit: true });
+    expect(exeMode.success).toHaveLength(2);
+    for (const s of exeMode.success) {
+      expect(s.launchWrapper).toBeUndefined();
+    }
   });
 });
