@@ -2,7 +2,7 @@
 // refresh against a fake itch.io).
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { readOnlyStoreHost, setStoreHost } from "../../src/lib/stores/host";
-import { isLoginRejected } from "../../src/lib/stores/http";
+import { isLoginRejected, isTransient } from "../../src/lib/stores/http";
 import * as itch from "../../src/lib/stores/itch";
 import * as refresh from "../../src/lib/stores/refresh";
 import { sessionData } from "../../src/lib/stores/storage";
@@ -269,5 +269,72 @@ describe("itch.io account", () => {
       accountName: "leafo",
       gameCount: 3,
     });
+  });
+});
+
+describe("itch.io refusing a key", () => {
+  // What api.itch.io answers a key it doesn't take (seen in 2026): 403 with
+  // its error about the key.
+  let keyWorks = true;
+  const host = new FakeStoreHost(({ url, init }) => {
+    if (!keyWorks || init.headers?.Authorization !== "Bearer AbC123") {
+      return { status: 403, body: INVALID_KEY };
+    }
+    const u = new URL(url);
+    if (u.pathname === "/profile") {
+      return { body: PROFILE };
+    }
+    return {
+      body: u.searchParams.get("page") === "1" ? OWNED_KEYS : OWNED_KEYS_EMPTY,
+    };
+  });
+  beforeEach(() => {
+    keyWorks = true;
+    setStoreHost(host);
+  });
+  afterEach(() => refresh.deleteAccount("itch"));
+  afterAll(() => setStoreHost(readOnlyStoreHost));
+
+  it("a key refused with 403 is a refused login, at sign-in and refresh", async () => {
+    const pending = refresh.pendingLogin("itch");
+    const err = await refresh
+      .completeLogin(pending, { pasted: "Wrong123" })
+      .catch((e) => e);
+    expect(isLoginRejected(err)).toBe(true);
+    expect(err.message).toContain("itch.io rejected the API key (invalid key)");
+
+    await refresh.completeLogin(pending, { pasted: "AbC123" });
+    await refresh.refreshLibrary("itch");
+    // The key is revoked: the account asks for a new sign-in.
+    keyWorks = false;
+    await expect(refresh.refreshLibrary("itch")).rejects.toSatisfy(
+      isLoginRejected,
+    );
+    expect(refresh.accountStatus("itch")).toMatchObject({
+      needsSignIn: true,
+      gameCount: 3,
+    });
+  });
+
+  it("other failed answers keep their status", () => {
+    const answer = (status: number) => ({
+      ok: false,
+      status,
+      url: "https://api.itch.io/profile?x=1",
+    });
+    expect(() =>
+      itch.checkAnswer(answer(503), "<html>Bad gateway</html>"),
+    ).toThrow(/503 Service Unavailable from https:\/\/api\.itch\.io\/profile:/);
+    let err: unknown;
+    try {
+      itch.checkAnswer(answer(429), '{"errors":["slow down"]}');
+    } catch (e) {
+      err = e;
+    }
+    expect(isTransient(err)).toBe(true);
+    expect(isLoginRejected(err)).toBe(false);
+    expect(() =>
+      itch.checkAnswer({ ...answer(200), ok: true }, "{}"),
+    ).not.toThrow();
   });
 });

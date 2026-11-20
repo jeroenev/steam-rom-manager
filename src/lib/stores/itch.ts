@@ -10,7 +10,8 @@
 // Assumed about the API, not verified against it: pages count from 1, an
 // empty owned_keys list means no more pages, and errors come as an `errors`
 // (or `error`) field, also with a success status. Nothing depends on the
-// size of a page.
+// size of a page. Seen against it: a key it doesn't take gets 403 with
+// {"errors":["invalid key"]}.
 //
 // Like Playnite's defaults, only items classified game or tool are listed;
 // free games only added to a collection have no key and aren't listed. A
@@ -21,8 +22,17 @@
 // OwnedGame.id is the itch game id, in decimal. extra: `url`, the game's
 // page on itch.io.
 
-import { cleanTitle, loginRejected, readText, snippet, wrapErr } from "./http";
+import {
+  HttpStatus,
+  cleanTitle,
+  loginRejected,
+  readText,
+  snippet,
+  withoutQuery,
+  wrapErr,
+} from "./http";
 import { paginate } from "./http";
+import { StoreResponse } from "./host";
 import { sessionData } from "./storage";
 import {
   ListContext,
@@ -123,10 +133,10 @@ async function listLibrary(session: StoreSession, ctx: ListContext) {
       const url = new URL(OWNED_KEYS_URL);
       url.searchParams.set("page", String(page.number));
       url.searchParams.set("per_page", KEYS_PER_PAGE);
-      const response = await ctx.http.send(url.toString(), {
+      const response = await ctx.http.request(url.toString(), {
         headers: { Authorization: `Bearer ${apiKey}` },
       });
-      return readPage(await readText(response), page);
+      return readPage(await readAnswer(response), page);
     });
   } catch (err) {
     throw wrapErr(err, "Could not list the itch.io games");
@@ -135,10 +145,51 @@ async function listLibrary(session: StoreSession, ctx: ListContext) {
 }
 
 async function fetchProfile(ctx: StoreContext, apiKey: string) {
-  const response = await ctx.http.send(PROFILE_URL, {
+  const response = await ctx.http.request(PROFILE_URL, {
     headers: { Authorization: `Bearer ${apiKey}` },
   });
-  return parseProfile(await readText(response));
+  return parseProfile(await readAnswer(response));
+}
+
+// The body of an api.itch.io answer. itch.io answers a key it doesn't take
+// with 403 and {"errors":["invalid key"]} (seen against the real API, 2026):
+// its own words about the key are a refused login, whatever the status.
+async function readAnswer(response: StoreResponse) {
+  const text = await readText(response);
+  checkAnswer(response, text);
+  return text;
+}
+
+// Throws for an answer that isn't a success: a refused login when itch's
+// errors are about the key, else its status (401: sign in again; 429 and
+// 5xx: try again later).
+export function checkAnswer(
+  response: Pick<StoreResponse, "ok" | "status" | "url">,
+  text: string,
+) {
+  if (response.ok) {
+    return;
+  }
+  let errors: ApiErrors | undefined;
+  try {
+    errors = apiErrors(JSON.parse(text));
+  } catch {
+    // (not JSON: the status says it)
+  }
+  if (errors?.aboutTheKey) {
+    throw keyRejected(errors);
+  }
+  throw new HttpStatus(
+    response.status,
+    withoutQuery(response.url),
+    snippet(text),
+  );
+}
+
+function keyRejected(errors: ApiErrors) {
+  return loginRejected(
+    `itch.io rejected the API key (${errors.messages.join("; ")}). Create a new key at ${API_KEYS_URL} and sign in again.`,
+  );
 }
 
 // The pasted key, trimmed. API keys are one token of letters and digits.
@@ -283,13 +334,10 @@ function parseApi(text: string, what: string): any {
   }
   const errors = apiErrors(value);
   if (errors) {
-    const joined = errors.messages.join("; ");
     if (errors.aboutTheKey) {
-      throw loginRejected(
-        `itch.io rejected the API key (${joined}). Create a new key at ${API_KEYS_URL} and sign in again.`,
-      );
+      throw keyRejected(errors);
     }
-    throw new Error(`itch.io returned an error: ${joined}`);
+    throw new Error(`itch.io returned an error: ${errors.messages.join("; ")}`);
   }
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw unexpected(what, "not an object", text);
