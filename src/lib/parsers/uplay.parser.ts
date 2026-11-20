@@ -7,6 +7,7 @@ import Registry from "winreg";
 import * as genericParser from "@node-steam/vdf";
 import * as path from "path";
 import * as os from "os";
+import { ubisoftWaitForExitWrapper } from "../launch-wrapper/launchers";
 
 export class UPlayParser implements GenericParser {
   private get lang() {
@@ -98,6 +99,18 @@ export class UPlayParser implements GenericParser {
           inputType: "toggle",
           info: this.lang.docs__md.input.join(""),
         },
+        uplayWaitForExit: {
+          label: this.lang.waitForExitInputTitle,
+          inputType: "toggle",
+          hidden: os.type() != "Windows_NT",
+          info: this.lang.docs__md.input.join(""),
+        },
+        uplaySteamOverlay: {
+          label: this.lang.steamOverlayInputTitle,
+          inputType: "toggle",
+          hidden: os.type() != "Windows_NT",
+          info: this.lang.docs__md.input.join(""),
+        },
       },
     };
   }
@@ -111,6 +124,11 @@ export class UPlayParser implements GenericParser {
       let appTitles: string[] = [];
       let appNames: string[] = [];
       let appPaths: string[] = [];
+      let appDirs: string[] = [];
+      const waitForExit =
+        !!inputs.uplayLauncherMode &&
+        !!inputs.uplayWaitForExit &&
+        os.type() === "Windows_NT";
       let installDirDictPromise: Promise<any> = null;
       let ubisoftDir = inputs.uplayDir || "C:\\Program Files (x86)\\Ubisoft";
       if (os.type() === "Windows_NT") {
@@ -228,6 +246,7 @@ export class UPlayParser implements GenericParser {
                   basePath,
                 ),
               );
+              appDirs.push(installDirDict[item.launcher_id.toString()]);
             }
           });
         })
@@ -238,12 +257,18 @@ export class UPlayParser implements GenericParser {
             failed: [],
           };
           for (let i = 0; i < appTitles.length; i++) {
+            const launchWrapper = waitForExit
+              ? ubisoftWaitForExitWrapper(appNames[i], appDirs[i], {
+                  steamOverlay: !!inputs.uplaySteamOverlay,
+                })
+              : undefined;
             parsedData.success.push({
               extractedTitle: appTitles[i],
               extractedAppId: appNames[i],
               launchOptions: `-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"uplay://launch/${appNames[i]}\\""`,
               filePath: appPaths[i],
               //fileLaunchOptions: not available
+              ...(launchWrapper && { launchWrapper }),
             });
           }
           resolve(parsedData);

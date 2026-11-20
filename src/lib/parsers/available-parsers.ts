@@ -29,7 +29,12 @@ export const availableParserInputs: Record<ParserType, string[]> = {
     "itchIoWindowsOnLinuxInstallDriveRedirect",
   ],
   Steam: ["appTypes", "onlyInstalled", "parseStrategy", "steamApiKey"],
-  UPlay: ["uplayDir", "uplayLauncherMode"],
+  UPlay: [
+    "uplayDir",
+    "uplayLauncherMode",
+    "uplayWaitForExit",
+    "uplaySteamOverlay",
+  ],
   UWP: ["UWPDir", "UWPLauncherMode"],
   "EA Desktop": [
     "eaGamesDir",
@@ -82,6 +87,8 @@ export const availableParserInputsInfo: Record<
   UPlay: {
     uplayDir: { inputType: "dir" },
     uplayLauncherMode: { inputType: "toggle" },
+    uplayWaitForExit: { inputType: "toggle" },
+    uplaySteamOverlay: { inputType: "toggle" },
   },
   UWP: {
     UWPDir: { inputType: "dir" },

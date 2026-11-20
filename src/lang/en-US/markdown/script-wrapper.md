@@ -31,6 +31,6 @@ These environment variables are set for every script:
 ## Things to know
 
 - The shortcut's executable becomes SRM's launch script (PowerShell on Windows, `sh` elsewhere), so turning wrapping on or off gives the games new app IDs: the next save replaces their shortcuts. Artwork and collections come along as usual.
-- Some parsers wrap their games themselves (Battle.net, and Epic and EA Desktop with **Wait for the game to exit**). Their own steps run inside yours: after your pre-launch script, and before your post-launch and post-exit scripts.
+- Some parsers wrap their games themselves (Battle.net, and Epic, EA Desktop and UPlay with **Wait for the game to exit**). Their own steps run inside yours: after your pre-launch script, and before your post-launch and post-exit scripts.
 - On Linux, Steam would run the shell script with a forced Steam Play compatibility tool (such as Proton), which can't work. So a parser that forces one doesn't wrap its games. (Forcing a tool for a single wrapped game, from Exceptions, has the same problem.)
 - The files SRM writes (in the `launch-wrappers` folder) are rewritten every time you save to Steam, so change your parser rather than those files.

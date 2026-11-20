@@ -302,6 +302,8 @@
       "Linux": "/path/to/Ubisoft/"
     },
     "launcherModeInputTitle": "Launch games via UPlay for online services",
+    "waitForExitInputTitle": "Wait for the game to exit before ending the shortcut",
+    "steamOverlayInputTitle": "Restart an open Ubisoft Connect so the Steam overlay works",
     "errors": {
       "invalidManifestsOverride": "> Uplay Directory Override is not a valid directory.",
       "uplayNotCompatible": "> UPlay Parser not available on Linux or Mac.",
