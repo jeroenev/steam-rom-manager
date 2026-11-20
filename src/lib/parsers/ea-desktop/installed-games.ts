@@ -246,7 +246,8 @@ export function parseInstallerData(
     const executablePath = executablePaths.find((file) => exists(file));
     if (executablePath) {
       runtime = {
-        filePath: executablePath,
+        // (relative to the game's folder, as installer data names exes)
+        filePath: path.relative(gameDir, executablePath),
         parameters: "",
       };
     } else if (!launcherMode) {

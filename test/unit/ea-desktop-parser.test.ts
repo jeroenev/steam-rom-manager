@@ -188,6 +188,28 @@ describe("installerdata.xml", () => {
     ).toMatchObject({ title: "Older", contentId: "222", filePath: gameDir });
   });
 
+  it("uses an exe named after the folder, in both modes (was: the folder twice in its path)", () => {
+    const older = `<game><metadata><localeInfo><title>Older</title></localeInfo></metadata><contentIDs><contentID>222</contentID></contentIDs></game>`;
+    for (const exe of [
+      path.join(gameDir, "Binaries", "AliceMadnessReturns.exe"),
+      path.join(gameDir, "AliceMadnessReturns.exe"),
+    ]) {
+      for (const launcherMode of [false, true]) {
+        expect(
+          parseInstallerData(older, gameDir, {
+            launcherMode,
+            exists: (file) => file === exe,
+          }),
+        ).toEqual({
+          title: "Older",
+          contentId: "222",
+          filePath: exe,
+          args: "",
+        });
+      }
+    }
+  });
+
   it("skips a file that isn't XML", () => {
     expect(parseInstallerData("<DiPManifest>", gameDir)).toBeUndefined();
   });
