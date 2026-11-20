@@ -80,7 +80,7 @@ describe("SqliteWrapper", () => {
        insert into caves values (1, '{"basePath":"C:/celeste"}');`,
     );
     expect(await new SqliteWrapper("itch.io", itch).read()).toEqual([
-      expect.objectContaining({ title: "Celeste" }),
+      { game_id: 1, title: "Celeste", verdict: '{"basePath":"C:/celeste"}' },
     ]);
   });
 });

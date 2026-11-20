@@ -10,7 +10,14 @@ import * as _ from "lodash";
 import * as fs from "fs-extra";
 import * as os from "os";
 import * as path from "path";
-import { glob } from "glob";
+import {
+  POWERSHELL_EXE,
+  defaultEpicManifestsDir,
+  epicLaunchLink,
+  epicManifestFiles,
+  powershellOpen,
+  readEpicManifest,
+} from "../helpers/launchers";
 
 export class EpicParser implements GenericParser {
   private get lang() {
@@ -53,17 +60,10 @@ export class EpicParser implements GenericParser {
       if (inputs.epicManifests) {
         epicManifestsDir = inputs.epicManifests;
       } else {
-        if (os.type() == "Windows_NT") {
-          epicManifestsDir =
-            "C:\\ProgramData\\Epic\\EpicGamesLauncher\\Data\\Manifests";
-        } else if (os.type() == "Linux") {
+        if (os.type() == "Linux") {
           return reject(this.lang.errors.epicNotCompatible);
-        } else if (os.type() == "Darwin") {
-          epicManifestsDir = path.join(
-            os.homedir(),
-            "/Library/Application Support/Epic/EpicGamesLauncher/Data/Manifests",
-          );
         }
+        epicManifestsDir = defaultEpicManifestsDir() || "";
       }
       if (!fs.existsSync(epicManifestsDir)) {
         return reject(this.lang.errors.epicNotInstalled);
@@ -74,16 +74,14 @@ export class EpicParser implements GenericParser {
         os.type() == "Windows_NT";
       try {
         let parsedData: ParsedData = {
-          executableLocation: `C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`,
+          executableLocation: POWERSHELL_EXE,
           success: [],
           failed: [],
         };
-        const files: string[] = await glob(
-          [epicManifestsDir.replace(/\\/g, "/"), "*.item"].join("/"),
-        );
+        const files: string[] = await epicManifestFiles(epicManifestsDir);
         for (let file of files) {
           if (fs.existsSync(file) && fs.lstatSync(file).isFile()) {
-            let item = JSON.parse(fs.readFileSync(file).toString());
+            let item = readEpicManifest(file);
             let launchPath = path.join(
               item.InstallLocation,
               item.LaunchExecutable,
@@ -97,7 +95,7 @@ export class EpicParser implements GenericParser {
               parsedData.success.push({
                 extractedTitle: item.DisplayName,
                 extractedAppId: item.AppName,
-                launchOptions: `-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"com.epicgames.launcher://apps/${item.AppName}?action=launch&silent=true\\""`,
+                launchOptions: powershellOpen(epicLaunchLink(item.AppName)),
                 filePath: launchPath,
                 fileLaunchOptions: item.LaunchCommand,
                 ...(waitForExit && {
@@ -125,14 +123,19 @@ function waitForExitWrapper(item: any): ParserLaunchWrapper {
   const stopEpic = { script: parserScript("epic-stop.ps1") };
   return {
     launch: {
-      file: `com.epicgames.launcher://apps/${item.AppName}?action=launch&silent=true`,
+      file: epicLaunchLink(item.AppName),
     },
     game: {
       folder: path.win32.normalize(item.InstallLocation),
       exeName: path.win32.basename(item.LaunchExecutable),
     },
     preLaunch: [stopEpic],
-    postLaunch: [{ script: cloudSync, args: ["-appName", item.AppName, "-Mark"] }],
-    postExit: [{ script: cloudSync, args: ["-appName", item.AppName] }, stopEpic],
+    postLaunch: [
+      { script: cloudSync, args: ["-appName", item.AppName, "-Mark"] },
+    ],
+    postExit: [
+      { script: cloudSync, args: ["-appName", item.AppName] },
+      stopEpic,
+    ],
   };
 }

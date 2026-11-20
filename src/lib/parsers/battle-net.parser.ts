@@ -6,98 +6,14 @@ import {
 } from "../../models";
 import { APP } from "../../variables";
 import * as os from "os";
-import { BlizzardParser } from "blizzard-product-parser";
 import * as path from "path";
 import { parserScript } from "../launch-wrapper";
-
-// shamelessly borrowed from steamgriddb-manager
-const BNET_GAMES: {
-  [k: string]: {
-    name: string;
-    launchId: string;
-  };
-} = {
-  d3: {
-    name: "Diablo III",
-    launchId: "D3",
-  },
-  dst2: {
-    name: "Destiny 2",
-    launchId: "DST2",
-  },
-  hero: {
-    name: "Heroes of the Storm",
-    launchId: "Hero",
-  },
-  odin: {
-    name: "Call of Duty: Modern Warfare",
-    launchId: "ODIN",
-  },
-  pro: {
-    name: "Overwatch 2",
-    launchId: "Pro",
-  },
-  s1: {
-    name: "Starcraft Remastered",
-    launchId: "S1",
-  },
-  s2: {
-    name: "Starcraft 2",
-    launchId: "S2",
-  },
-  viper: {
-    name: "Call of Duty: Black Ops 4",
-    launchId: "VIPR",
-  },
-  w3: {
-    name: "Warcraft 3: Reforged",
-    launchId: "W3",
-  },
-  hsb: {
-    name: "Hearthstone",
-    launchId: "WTCG",
-  },
-  wlby: {
-    name: "Crash Bandicoot 4",
-    launchId: "WLBY",
-  },
-  wow: {
-    name: "World of Warcraft",
-    launchId: "WoW",
-  },
-  zeus: {
-    name: "Call of Duty: Black Ops Cold War",
-    launchId: "ZEUS",
-  },
-  fenris: {
-    name: "Diablo IV",
-    launchId: "Fen",
-  },
-  anbs: {
-    name: "Diablo Immortal",
-    launchId: "ANBS",
-  },
-  osi: {
-    name: "Diablo II: Resurrected",
-    launchId: "OSI",
-  },
-  rtro: {
-    name: "Blizzard Arcade Collection",
-    launchId: "RTRO",
-  },
-  lazr: {
-    name: "Call of Duty: Modern Warfare 2 Campaign Remastered",
-    launchId: "LAZR",
-  },
-  fore: {
-    name: "Call of Duty: Vanguard",
-    launchId: "FORE",
-  },
-  auks: {
-    name: "Call of Duty",
-    launchId: "AUKS",
-  },
-};
+import {
+  BATTLE_NET_PRODUCT_DB,
+  BNET_GAMES,
+  DEFAULT_BATTLE_NET_EXE,
+  readBattleNetProducts,
+} from "../helpers/launchers";
 
 export class BattleNetParser implements GenericParser {
   private get lang() {
@@ -129,10 +45,7 @@ export class BattleNetParser implements GenericParser {
         return reject(this.lang.errors.battleNotCompatible);
       }
       try {
-        const dbPath = "C:\\ProgramData\\Battle.net\\Agent\\product.db";
-        const bNetExe =
-          inputs.battleExeOverride ||
-          "C:\\Program Files (x86)\\Battle.net\\Battle.net.exe";
+        const bNetExe = inputs.battleExeOverride || DEFAULT_BATTLE_NET_EXE;
         const bNetDir = path.dirname(bNetExe);
         // Battle.net launches a game only once it has started completely:
         // SRM's launch script restarts it and waits (battle-net-start.ps1),
@@ -147,13 +60,7 @@ export class BattleNetParser implements GenericParser {
           failed: [],
           executableLocation: bNetExe,
         };
-        const decoder = new BlizzardParser(dbPath);
-        decoder.decode();
-        const rawData = decoder.getRaw();
-        const installed = rawData.productInstall.filter(
-          (product: any) =>
-            !(product.uid === "battle.net" || product.uid === "agent"),
-        );
+        const installed = readBattleNetProducts(BATTLE_NET_PRODUCT_DB);
         for (let product of installed) {
           const productCode: string = product.productCode.toLowerCase();
           if (BNET_GAMES[productCode]) {

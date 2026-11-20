@@ -74,9 +74,10 @@ function runTask(db: Db, task: SqliteTask, options: { [k: string]: any }) {
         )
         .all();
     case "itch.io":
+      // (game_id: the itch game an install is of, to match owned games)
       return db
         .prepare(
-          "select title, verdict from caves as c join games as g on c.game_id = g.id",
+          "select c.game_id as game_id, title, verdict from caves as c join games as g on c.game_id = g.id",
         )
         .all();
   }
