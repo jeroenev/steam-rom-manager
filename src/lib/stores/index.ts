@@ -35,3 +35,6 @@ export {
   signOut,
 } from "./refresh";
 export { readSessionInfo, storesRoot } from "./storage";
+export * from "./targets";
+export * from "./arrange";
+export * from "./installed-ids";
