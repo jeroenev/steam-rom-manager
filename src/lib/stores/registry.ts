@@ -1,6 +1,8 @@
 // Which stores this version of SRM can sign in to. A store comes in with one
 // import and one line here; until then its account shows as "not yet".
 
+import { gogClient } from "./gog";
+import { itchClient } from "./itch";
 import { StoreClient, StoreKey } from "./types";
 
 const clients = new Map<StoreKey, StoreClient>();
@@ -17,3 +19,6 @@ export function unregisterStoreClient(store: StoreKey) {
 export function storeClient(store: StoreKey): StoreClient | undefined {
   return clients.get(store);
 }
+
+registerStoreClient(gogClient);
+registerStoreClient(itchClient);
