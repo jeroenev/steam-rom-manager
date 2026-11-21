@@ -39,7 +39,7 @@ When the titles differ (the store's launcher can name a game differently from th
 ## Your sign-in and your privacy
 
 - Sign-ins are kept in SRM's data folder, under `stores/<store>/session.json`, **encrypted** with your system's secret storage (Windows' DPAPI, the macOS keychain, or a keyring on Linux). Without a keyring on Linux, they are saved with Chromium's built-in key, which anyone who can read your files can undo; the parser's settings say so when this is the case.
-- For the EA app, Battle.net and Humble Bundle, the sign-in is the store's cookies. SRM keeps them in its own browser data for that store, as a browser keeps cookies; `session.json` then holds no secret.
+- For the EA app, Battle.net and Humble Bundle, the sign-in is the store's cookies. SRM keeps them in its own browser data for that store, encrypted with the same secret storage (the keyring caveat above applies to them too); `session.json` then holds no secret. Only the store's own cookies stay: what another site's sign-in leaves there (for example signing in to the EA app with Google or Steam) is removed once the sign-in window closes. When you weren't signed in, a sign-in that fails or that you cancel leaves nothing behind, so the next try asks for the whole sign-in again, two-factor authentication included.
 - The list of owned games is kept next to it, in `stores/<store>/library.json`.
 - Sign-ins are never part of the parser's settings (`userConfigurations.json`), never in bug reports and never in SRM's log.
 - SRM's sign-in window is the store's own page, in a window apart from SRM, with no access to SRM.

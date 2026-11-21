@@ -191,6 +191,8 @@ export function setStoresOffline(offline: boolean | (() => boolean)) {
 // both use (and rotate) the same refresh token.
 const queues = new Map<StoreKey, Promise<unknown>>();
 const refreshing = new Set<StoreKey>();
+// What stops the refresh running now, per store (sign-out uses it).
+const running = new Map<StoreKey, AbortController>();
 
 function oneAtATime<T>(store: StoreKey, work: () => Promise<T>): Promise<T> {
   const before = queues.get(store) || Promise.resolve();
@@ -243,9 +245,34 @@ export async function completeLogin(
     recordFailure(store, null);
     return session.accountName;
   } catch (err) {
+    await forgetUnfinishedLogin(store);
     throw redacted(err);
   } finally {
     changed(store);
+  }
+}
+
+// A cookie store's sign-in that didn't finish (it failed, or the user closed
+// the window): its partition may hold a working login, which SRM would show
+// as "not signed in", with no way to sign out. It's emptied, unless the
+// account is signed in (an earlier sign-in, or a damaged one: that one's
+// cookies are the account's).
+export async function forgetUnfinishedLogin(store: StoreKey) {
+  const host = getStoreHost();
+  if (!COOKIE_STORES.includes(store) || !host.clearStoreData) {
+    return;
+  }
+  try {
+    await storage.withAccountLock(store, async () => {
+      if (!signedIn(store)) {
+        await host.clearStoreData!(store);
+      }
+    });
+  } catch (err) {
+    log(
+      host,
+      `Could not clear the ${STORE_NAMES[store]} sign-in data: ${messageOf(err)}`,
+    );
   }
 }
 
@@ -473,27 +500,40 @@ async function refreshAndRecord(
   }
 }
 
+// Runs `work` until it ends, the deadline passes, or the refresh is stopped
+// from outside (sign-out): the last two abort its requests, and end the
+// refresh at once with the abort's reason, also when the store module
+// doesn't notice.
 async function withDeadline<T>(
   store: StoreKey,
   deadlineMs: number,
   work: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout>;
-  const deadline = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      controller.abort();
-      reject(
+  running.set(store, controller);
+  const timer = setTimeout(
+    () =>
+      controller.abort(
         transient(
           `Fetching the ${STORE_NAMES[store]} library took longer than ${Math.round(deadlineMs / 60000)} minutes and was stopped`,
         ),
-      );
-    }, deadlineMs);
-  });
+      ),
+    deadlineMs,
+  );
+  const stopped = new Promise<never>((_resolve, reject) =>
+    controller.signal.addEventListener(
+      "abort",
+      () => reject(controller.signal.reason),
+      { once: true },
+    ),
+  );
   try {
-    return await Promise.race([work(controller.signal), deadline]);
+    return await Promise.race([work(controller.signal), stopped]);
   } finally {
     clearTimeout(timer);
+    if (running.get(store) === controller) {
+      running.delete(store);
+    }
   }
 }
 
@@ -508,7 +548,8 @@ export interface RefreshRun {
   session: StoreSession;
   fetched: { games?: OwnedGame[]; error?: unknown; partial?: boolean };
   asked: Asked;
-  // Set when the deadline passed: nothing but renewed tokens is saved.
+  // Aborted when the deadline passed or the account was signed out of:
+  // nothing but renewed tokens is saved.
   signal?: AbortSignal;
 }
 
@@ -619,7 +660,9 @@ export async function commitRefresh(
 // Signs out. Where the store offers a way, it's told first that SRM's login
 // is no longer needed (Epic, Amazon); the others keep it valid until it
 // expires. Then the session and the cached library are removed, also when
-// the store couldn't be told: that returns a warning.
+// the store couldn't be told: that returns a warning. A cookie store's
+// partition is emptied last, once a refresh that was running has stopped:
+// an answer still on its way would put renewed sign-in cookies back.
 export async function signOut(store: StoreKey): Promise<string | null> {
   const host = getStoreHost();
   let warning: string | null = null;
@@ -639,7 +682,13 @@ export async function signOut(store: StoreKey): Promise<string | null> {
       }
     }
   }
+  // (first: a refresh still queued then finds no session, and sends nothing)
   await deleteAccount(store);
+  if (COOKIE_STORES.includes(store)) {
+    running.get(store)?.abort(accountChanged(store));
+    // (never rejects: see oneAtATime)
+    await queues.get(store);
+  }
   if (host.clearStoreData) {
     try {
       await host.clearStoreData(store);

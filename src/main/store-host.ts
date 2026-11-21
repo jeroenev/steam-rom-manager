@@ -1,9 +1,12 @@
 // The store accounts' host in the Electron app (see src/lib/stores/host.ts):
-// sign-ins are kept encrypted with safeStorage (DPAPI on Windows, the
-// keychain on macOS, the keyring on Linux), requests go through Chromium's
-// network stack (system certificates and proxy), and sign-ins happen in
-// SRM's login window (store-login.ts).
+// token stores' sign-ins are kept encrypted with safeStorage (DPAPI on
+// Windows, the keychain on macOS, the keyring on Linux), cookie stores'
+// with Chromium's cookie encryption, which uses the same key (only in a
+// packaged SRM: the build turns on Electron's EnableCookieEncryption fuse).
+// Requests go through Chromium's network stack (system certificates and
+// proxy), and sign-ins happen in SRM's login window (store-login.ts).
 import {
+  app,
   BrowserWindow,
   net,
   safeStorage,
@@ -38,8 +41,9 @@ export interface ElectronStoreHostOptions {
 
 // Where a store's requests go through. A cookie store's login is the
 // cookies of its own partition, kept on disk (persist:) as a browser keeps
-// them; a token store's partition only holds, in memory, what the store
-// sets while SRM runs, away from SRM's own window.
+// them, encrypted in a packaged SRM (see the top of this file); a token
+// store's partition only holds, in memory, what the store sets while SRM
+// runs, away from SRM's own window.
 export function storePartition(store: StoreKey) {
   return COOKIE_STORES.includes(store)
     ? `persist:srm-store-${store}`
@@ -94,7 +98,7 @@ export function electronStoreHost(
     secretsWarning: () =>
       process.platform === "linux" &&
       safeStorage.getSelectedStorageBackend() === "basic_text"
-        ? "No keyring (such as GNOME Keyring or KWallet) is available, so store sign-ins are saved with Chromium's built-in key, which anyone who can read your files can undo."
+        ? "No keyring (such as GNOME Keyring or KWallet) is available, so store sign-ins (tokens and the EA app's, Battle.net's and Humble Bundle's cookies) are saved with Chromium's built-in key, which anyone who can read your files can undo."
         : undefined,
     openLoginWindow: options.getWindow
       ? (pending) =>
@@ -113,8 +117,10 @@ export function electronStoreHost(
     setCookies: async (store, cookies) => {
       const ses = session.fromPartition(storePartition(store));
       for (const cookie of cookies) {
-        await ses.cookies.set(cookieDetails(cookie));
+        await ses.cookies.set(pastedCookieDetails(cookie));
       }
+      // (on disk now, not at Chromium's next write: SRM may be closed first)
+      await ses.cookies.flushStore();
     },
     // (values included: never log them)
     cookies: (store, url) =>
@@ -141,9 +147,20 @@ function readableSession(store: StoreKey, host: StoreHost) {
   }
 }
 
+// How long a pasted cookie is kept. A Cookie header has no expiry, and a
+// cookie set without one would be gone once SRM closes; the store says when
+// the sign-in stops counting (Humble's session status then asks for a new
+// one). (Chromium caps a cookie's life at 400 days.)
+export const PASTED_COOKIE_LIFETIME_S = 365 * 24 * 60 * 60;
+
 // A pasted cookie for the partition: for the whole site, over HTTPS only (a
-// __Host- cookie needs both, and no domain).
-function cookieDetails(cookie: StoreCookie): Electron.CookiesSetDetails {
+// __Host- cookie needs both, and no domain); kept across restarts, as a
+// browser keeps a sign-in; and out of reach of the pages' scripts, as the
+// site sets its session cookie (SRM's own requests still send it).
+export function pastedCookieDetails(
+  cookie: StoreCookie,
+  nowMs: number = Date.now(),
+): Electron.CookiesSetDetails {
   const host = cookie.domain.replace(/^\./, "");
   return {
     url: `https://${host}/`,
@@ -152,13 +169,16 @@ function cookieDetails(cookie: StoreCookie): Electron.CookiesSetDetails {
     domain: cookie.domain.startsWith(".") ? cookie.domain : undefined,
     path: "/",
     secure: true,
+    httpOnly: true,
+    expirationDate: Math.floor(nowMs / 1000) + PASTED_COOKIE_LIFETIME_S,
   };
 }
 
 // A fetch through `ses`, with what the stores need and net.fetch doesn't
 // give: the URL a request ended up at after redirects (GOG answers a dead
 // token with a redirect to its sign-in page; net.fetch's response.url is
-// empty). Cookies are the partition's: sent, and kept when set.
+// empty). Cookies are the partition's: sent, and kept when set, unless the
+// request says "omit".
 export function requestThrough(ses: Session): StoreFetch {
   return (url: string, init: StoreRequestInit = {}) =>
     new Promise<StoreResponse>((resolve, reject) => {
@@ -172,7 +192,7 @@ export function requestThrough(ses: Session): StoreFetch {
         method: init.method || "GET",
         url,
         session: ses,
-        credentials: "include",
+        credentials: init.credentials ?? "include",
         redirect: "follow",
       });
       const onAbort = () => {
@@ -250,6 +270,12 @@ export function logSecretsWarning(host: StoreHost) {
     const warning = host.secretsWarning?.();
     if (warning) {
       log.warn(`Store accounts: ${warning}`);
+    }
+    if (!app.isPackaged) {
+      // (the development Electron has no fuses flipped)
+      log.warn(
+        "Store accounts: this SRM isn't packaged, so the EA app's, Battle.net's and Humble Bundle's sign-in cookies are kept unencrypted.",
+      );
     }
   } catch {
     // (only a warning)

@@ -431,6 +431,25 @@ describe("Store Account parser (characterization)", () => {
     ]);
   });
 
+  it("with the options off, the same store's installed game is also matched by its title", async () => {
+    setStoreAccountEnvironment({
+      launchers: () => windows,
+      installed: async (store) =>
+        store === "gog"
+          ? [{ store: "gog", id: "999", title: "DISCO ELYSIUM" }]
+          : [],
+    });
+    const result = await parse(
+      config({
+        storeSkipPrereleases: false,
+        storeSkipInstalledElsewhere: false,
+        storeSkipSteamInstalled: false,
+      }),
+    );
+    expect(titles(result)).not.toContain("Disco Elysium");
+    expect(titles(result)).toContain("Unreal Tournament 2004");
+  });
+
   it("itch.io without the itch app, and Linux with Heroic: store pages and Heroic links", async () => {
     const itch = await parse(
       config({ storeAccount: "itch" }, { configTitle: "itch.io owned" }),
@@ -674,11 +693,35 @@ describe("gamesToAdd", () => {
     ];
     const kept = gamesToAdd(
       games,
-      { sameStoreIds: new Set(["1234567", "pro"]), titles: new Set() },
+      {
+        sameStoreIds: new Set(["1234567", "pro"]),
+        sameStoreTitles: new Set(),
+        titles: new Set(),
+      },
       new Set(),
       off,
     );
     expect(kept.map((g) => g.title)).toEqual(["Unravel"]);
+  });
+
+  it("leaves out a game installed from the same store by its title too, with the options off", () => {
+    // EA: the owned offer id isn't one the installed game's installer data
+    // lists (its content id wasn't known), but its launcher-mode shortcut
+    // would be this one: the same program and title.
+    const kept = gamesToAdd(
+      [
+        ownedGame("ea", "DR:225064100", "Battlefield 3"),
+        ownedGame("ea", "Origin.OFR.50.0001", "Dead Space"),
+      ],
+      {
+        sameStoreIds: new Set(["70619"]),
+        sameStoreTitles: new Set(["battlefield3"]),
+        titles: new Set(["deadspace"]),
+      },
+      new Set(),
+      off,
+    );
+    expect(kept.map((g) => g.title)).toEqual(["Dead Space"]);
   });
 
   it("compares titles by their letters and digits", () => {
@@ -687,7 +730,11 @@ describe("gamesToAdd", () => {
         ownedGame("gog", "1", "PREY"),
         ownedGame("gog", "2", "Brothers - A Tale of Two Sons"),
       ],
-      { sameStoreIds: new Set(), titles: new Set(["prey"]) },
+      {
+        sameStoreIds: new Set(),
+        sameStoreTitles: new Set(),
+        titles: new Set(["prey"]),
+      },
       new Set(["brothersataleoftwosons"]),
       { ...off, skipInstalledElsewhere: true },
     );

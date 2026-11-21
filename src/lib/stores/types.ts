@@ -115,6 +115,11 @@ export interface PendingLogin {
   pageTextUrlPrefixes: string[];
   // URLs whose cookies the window hands over when the login is done.
   cookieUrls: string[];
+  // Cookie stores: the sites (registrable domains) whose data the store's
+  // partition keeps once the window closes. Another site's (a Google, Steam
+  // or Apple sign-in the store's page offered) is removed: SRM never needs
+  // it. Token stores sign in in a partition that's thrown away anyway.
+  siteDomains?: string[];
   manual: ManualLogin;
   // The user agent the login window uses, when the store needs a particular
   // one; otherwise the browser's own, without Electron's tokens.

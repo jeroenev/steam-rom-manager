@@ -1,6 +1,8 @@
 import {
   PreviewData,
   ParsedUserConfiguration,
+  ParsedUserConfigurationFile,
+  ParserType,
   OnlineImages,
   AppSettings,
   SteamTree,
@@ -31,6 +33,56 @@ export interface BuildResult {
   onlineImages: OnlineImages;
   // SteamGridDB artwork previously chosen per game (artworkCache.json).
   sgdbToArt?: SGDBToArt;
+}
+
+// The app id of a parsed file's shortcut (an artwork-only parser's file names
+// an existing shortcut's).
+export function appIdOf(
+  parserType: ParserType,
+  file: Pick<
+    ParsedUserConfigurationFile,
+    "modifiedExecutableLocation" | "titles"
+  >,
+): string {
+  return superTypesMap[parserType] !== "ArtworkOnly"
+    ? steam.generateAppId(file.modifiedExecutableLocation, file.titles.final)
+    : steam.lengthenAppId(file.modifiedExecutableLocation.replace(/\"/g, ""));
+}
+
+const STORE_ACCOUNT: ParserType = "Store Account";
+
+const accountKey = (steamDirectory: string, accountID: string) =>
+  `${steamDirectory}\n${accountID}`;
+
+// The app ids every parser but the Store Account parsers gives, per Steam
+// directory and user account. A Store Account shortcut (a game that isn't
+// installed) with one of them is left out: it is that parser's game (an
+// installed copy its id didn't match, such as an EA game whose content id
+// wasn't known; or one installed from another store whose launcher-mode
+// parser uses the same program, PowerShell for Epic and EA), and would
+// otherwise replace it or put it in "Not installed". Two Store Account
+// parsers with the same game: the first one's.
+export function otherParsersAppIds(
+  configs: readonly ParsedUserConfiguration[],
+): Map<string, Set<string>> {
+  const taken = new Map<string, Set<string>>();
+  for (const config of configs) {
+    if (config.parserType === STORE_ACCOUNT) {
+      continue;
+    }
+    for (const account of config.foundUserAccounts) {
+      const key = accountKey(config.steamDirectory, account.accountID);
+      let ids = taken.get(key);
+      if (!ids) {
+        ids = new Set();
+        taken.set(key, ids);
+      }
+      for (const file of config.files) {
+        ids.add(appIdOf(config.parserType, file));
+      }
+    }
+  }
+  return taken;
 }
 
 // Builds the preview list: runs the enabled parsers and turns their output
@@ -173,6 +225,8 @@ export class PreviewBuilder {
     let gridData = nonSteamShortcutsData.gridData.tree;
     let numberOfItems: number = 0;
     let previewData: PreviewData = {};
+    const takenByOthers = otherParsersAppIds(data);
+    let ownedDuplicates = 0;
 
     for (let i = 0; i < data.length; i++) {
       let config = data[i];
@@ -204,12 +258,15 @@ export class PreviewBuilder {
         for (let k = 0; k < data[i].files.length; k++) {
           let file = config.files[k];
           let executableLocation = file.modifiedExecutableLocation;
-          let title = file.titles.final;
-          let appID: string = "";
-          if (superTypesMap[config.parserType] !== "ArtworkOnly") {
-            appID = steam.generateAppId(executableLocation, title);
-          } else {
-            appID = steam.lengthenAppId(executableLocation.replace(/\"/g, ""));
+          let appID = appIdOf(config.parserType, file);
+          if (
+            config.parserType === STORE_ACCOUNT &&
+            takenByOthers
+              .get(accountKey(config.steamDirectory, userAccount.accountID))
+              ?.has(appID)
+          ) {
+            ownedDuplicates++;
+            continue;
           }
 
           if (
@@ -384,6 +441,13 @@ export class PreviewBuilder {
           }
         }
       }
+    }
+    if (ownedDuplicates > 0) {
+      this.loggerService.info(
+        this.lang.info.ownedDuplicates__i.interpolate({
+          count: ownedDuplicates,
+        }),
+      );
     }
     return { numberOfItems: numberOfItems, data: previewData };
   }

@@ -26,6 +26,7 @@ export {
   completeLogin,
   deleteAccount,
   endPendingLogin,
+  forgetUnfinishedLogin,
   isAccountChanged,
   isStale,
   onStoresChanged,

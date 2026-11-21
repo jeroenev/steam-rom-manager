@@ -197,6 +197,7 @@ export function beginLogin(): PendingLogin {
     doneUrlPrefixes: [DONE_PREFIX],
     pageTextUrlPrefixes: [],
     cookieUrls: [...COOKIE_URLS],
+    siteDomains: ["humblebundle.com"],
     manual: {
       kind: "paste",
       url: LOGIN_URL,

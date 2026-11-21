@@ -143,6 +143,8 @@ export function beginLogin(): PendingLogin {
     doneUrlPrefixes: [DONE_PREFIX],
     pageTextUrlPrefixes: [],
     cookieUrls: [...COOKIE_URLS],
+    // (the sign-in is all on ea.com: accounts, signin, www)
+    siteDomains: ["ea.com"],
     // The sign-in lives in HttpOnly cookies, which a user can't reasonably
     // copy.
     manual: { kind: "unsupported" },

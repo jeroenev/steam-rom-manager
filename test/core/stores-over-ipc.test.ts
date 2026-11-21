@@ -199,6 +199,25 @@ describe("store accounts over IPC", () => {
     });
   });
 
+  it("a cookie store's sign-in window closed before the end leaves nothing in its partition", async () => {
+    const { service } = await makeService();
+    const cleared: string[] = [];
+    host.clearStoreData = async (store) => {
+      cleared.push(store);
+    };
+    try {
+      host.openLoginWindow = async () => {
+        throw new LoginCancelled("Sign-in window closed");
+      };
+      expect(await service.loginWithWindow("ea")).toBeNull();
+      // (a token store's window threw its partition away itself)
+      expect(await service.loginWithWindow("gog")).toBeNull();
+      expect(cleared).toEqual(["ea"]);
+    } finally {
+      delete host.clearStoreData;
+    }
+  });
+
   it("stores that come later say so; unknown stores are refused", async () => {
     const { service } = await makeService();
     const epic = storeClient("epic");

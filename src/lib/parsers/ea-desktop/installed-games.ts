@@ -19,19 +19,9 @@ export const defaultGamesDirs = [
 
 // Shortcuts in launcher mode start PowerShell. A shortcut's app id comes
 // from its exe's path (and title), so wherever Windows is in C:\WINDOWS (in
-// any case) the path stays the one SRM always wrote.
-export function powershellPath(systemRoot: string | undefined): string {
-  const root = (systemRoot || "").replace(/[\\/]+$/, "");
-  const windows =
-    root && root.toLowerCase() !== "c:\\windows" ? root : "C:\\WINDOWS";
-  return path.win32.join(
-    windows,
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
-}
+// any case) the path stays the one SRM always wrote. (Shared with the store
+// accounts' EA shortcuts, src/lib/stores/targets.ts.)
+export { powershellPath } from "../../helpers/launchers/windows";
 
 // The folders that hold an EA app install (a __Installer\installerdata.xml):
 // - the games in `gamesDir` (the parser's folder field), or when that is

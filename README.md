@@ -67,13 +67,13 @@ In addition to flexible importing of ROMS, SRM now has several _platform parsers
 | [Battle.net](https://battle.net)                                   | ✅      | ❌     | 🟦    | <ul><li>Launch via Battle.net</li></ul>                                                                           |
 | [GitHub Launcher](https://github.com/SirDiabo/GithubLauncher)      | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                                                                           |
 | [Quiver Launcher](https://github.com/tgeorgiadis/quiver-launcher)  | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                                                                           |
-| Store Account (GOG, itch.io)                                       | ✅      | ✅     | ✅    | <ul><li>Install via the store's launcher</li><li>Install via Heroic (Linux)</li><li>Open the store page</li></ul> |
+| Store Account (Epic, GOG, Amazon, EA, Battle.net, Humble, itch.io) | ✅      | ✅     | ✅    | <ul><li>Install via the store's launcher</li><li>Install via Heroic (Linux)</li><li>Open the store page</li></ul> |
 
 ✅ Implemented
 ❌ Planned
 🟦 Store not present
 
-The Store Account parser signs in to your account at a store and adds the games the account owns but hasn't installed, in the Steam collection "Not installed"; each shortcut installs its game. Epic Games Store, Amazon Games, EA app, Battle.net and Humble Bundle come later.
+The Store Account parser signs in to your account at a store and adds the games the account owns but hasn't installed, in the Steam collection "Not installed"; each shortcut installs its game. It supports the Epic Games Store, GOG, Amazon Games, the EA app, Battle.net, Humble Bundle and itch.io; the parser's docs in the app say how each store signs in (the EA app and Battle.net sign in through SRM's window only).
 
 We are open to suggestions and pull requests if you would like a platform parser added!
 

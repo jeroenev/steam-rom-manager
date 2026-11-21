@@ -139,6 +139,7 @@
         "invalidConfigurations__i": "${count} user parser(s) was/were skipped (invalid).",
         "executingParsers": "Executing parsers.",
         "reusedParsers__i": "Parsed ${parsed} of ${total} parsers again; the others hadn't changed since the last list.",
+        "ownedDuplicates__i": "Left out ${count} Store Account shortcut(s) that another parser already adds (same program and title).",
         "shutdownSteam": "If Steam is running, exit Steam.",
         "noParserConfigurations": "Please create parser in \"Parsers\" menu first.",
         "parserFoundNoFiles": "Parser(s) found no files matching user configuration.",

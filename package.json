@@ -47,6 +47,9 @@
       "dist/**/*",
       "package.json"
     ],
+    "electronFuses": {
+      "enableCookieEncryption": true
+    },
     "publish": {
       "provider": "github",
       "owner": "doZennn"

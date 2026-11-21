@@ -255,6 +255,7 @@ export function beginLogin(): PendingLogin {
     doneUrlPrefixes: [DONE_PREFIX],
     pageTextUrlPrefixes: [],
     cookieUrls: SESSION_HOSTS.map((host) => `https://${host}/`),
+    siteDomains: ["battle.net", "blizzard.com"],
     // The sign-in lives in HttpOnly cookies, which a user can't reasonably
     // copy.
     manual: { kind: "unsupported" },

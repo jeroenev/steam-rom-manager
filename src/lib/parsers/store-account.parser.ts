@@ -152,14 +152,25 @@ export interface OwnedFilter {
   skipSteamInstalled: boolean;
 }
 
+// What's installed, for gamesToAdd: from this same store, its ids and
+// titles (normalizeTitle); from every launcher SRM knows, titles (only
+// needed with skipInstalledElsewhere).
+export interface InstalledForFilter {
+  sameStoreIds: Set<string>;
+  sameStoreTitles: Set<string>;
+  titles: Set<string>;
+}
+
 // The owned games that get a shortcut. A game installed from this same
-// store, matched by its store id, never does: the installed game has its
-// own (through the store's parser). Then, as set: betas, demos and
-// playtests; games installed from any launcher SRM knows (same title); and
-// games Steam has installed itself (same title).
+// store, matched by its store id or its title, never does: the installed
+// game has its own (through the store's parser, whose launcher-mode
+// shortcut has the same program and, with the same title, the same app id).
+// Then, as set: betas, demos and playtests; games installed from any
+// launcher SRM knows (same title); and games Steam has installed itself
+// (same title).
 export function gamesToAdd(
   games: readonly OwnedGame[],
-  installed: { sameStoreIds: Set<string>; titles: Set<string> },
+  installed: InstalledForFilter,
   steamTitles: Set<string>,
   filter: OwnedFilter,
 ): OwnedGame[] {
@@ -167,10 +178,13 @@ export function gamesToAdd(
     if (storeIds(game).some((id) => installed.sameStoreIds.has(id))) {
       return false;
     }
+    const title = normalizeTitle(game.title);
+    if (installed.sameStoreTitles.has(title)) {
+      return false;
+    }
     if (filter.skipPrereleases && isPrerelease(game.title)) {
       return false;
     }
-    const title = normalizeTitle(game.title);
     if (filter.skipInstalledElsewhere && installed.titles.has(title)) {
       return false;
     }
@@ -338,6 +352,12 @@ export class StoreAccountParser implements GenericParser {
       skipSteamInstalled: inputs.storeSkipSteamInstalled !== false,
     };
     const sameStore = await environment.installed(store, installedLocations);
+    // (a title of only signs matches nothing)
+    const titlesOf = (games: InstalledGame[]) =>
+      games
+        .map((game) => normalizeTitle(game.title || ""))
+        .filter((title) => title !== "");
+    const sameStoreTitles = new Set(titlesOf(sameStore));
     const titles = new Set<string>();
     if (filter.skipInstalledElsewhere) {
       for (const other of STORE_KEYS) {
@@ -345,10 +365,8 @@ export class StoreAccountParser implements GenericParser {
           other === store
             ? sameStore
             : await environment.installed(other, installedLocations);
-        for (const game of games) {
-          if (game.title) {
-            titles.add(normalizeTitle(game.title));
-          }
+        for (const title of titlesOf(games)) {
+          titles.add(title);
         }
       }
     }
@@ -359,7 +377,11 @@ export class StoreAccountParser implements GenericParser {
         : new Set<string>();
     const games = gamesToAdd(
       library.games,
-      { sameStoreIds: installedIds(store, sameStore), titles },
+      {
+        sameStoreIds: installedIds(store, sameStore),
+        sameStoreTitles,
+        titles,
+      },
       steamTitles,
       filter,
     );

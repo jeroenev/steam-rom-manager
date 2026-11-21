@@ -130,6 +130,8 @@ describe("store accounts", () => {
     }
     delete host.cookies;
     delete host.setCookies;
+    delete host.clearStoreData;
+    host.handler = () => ({ status: 404 });
   });
   afterAll(() => setStoreHost(readOnlyStoreHost));
 
@@ -427,6 +429,98 @@ describe("store accounts", () => {
     expect(storage.loadSession("ea", host)).toBeNull();
     expect(refresh.cachedLibrary("ea")).toBeNull();
     expect(refresh.accountStatus("ea").refreshing).toBe(false);
+  });
+
+  it("signing out of a cookie store stops its refresh before it empties the partition", async () => {
+    // (the store never answers: only the sign-out ends the request)
+    host.handler = () => new Promise(() => undefined);
+    let started: () => void;
+    const begun = new Promise<void>((resolve) => (started = resolve));
+    let requestStopped = false;
+    registerStoreClient(
+      fakeClient("ea", async (_session, ctx) => {
+        started();
+        try {
+          await ctx.http.send("https://store.example/library");
+        } catch (err) {
+          requestStopped = true;
+          throw err;
+        }
+        return games(1);
+      }),
+    );
+    const cleared: { refreshing: boolean }[] = [];
+    host.clearStoreData = async (store) => {
+      cleared.push({ refreshing: refresh.accountStatus(store).refreshing });
+    };
+    storage.saveSession("ea", session("old"), host);
+    const refreshing = refresh.refreshLibrary("ea");
+    refreshing.catch(() => undefined);
+    await begun;
+    expect(await refresh.signOut("ea")).toBeNull();
+    // The request was stopped, and the refresh over, before the partition
+    // was emptied: no answer can put sign-in cookies back after it.
+    expect(requestStopped).toBe(true);
+    expect(cleared).toEqual([{ refreshing: false }]);
+    await expect(refreshing).rejects.toSatisfy(refresh.isAccountChanged);
+    // (no failure of the account's)
+    expect(storage.loadFailure("ea")).toBeNull();
+  });
+
+  it("a cookie store's sign-in that fails leaves nothing in its partition, unless the account is signed in", async () => {
+    const cleared: StoreKey[] = [];
+    host.clearStoreData = async (store) => {
+      cleared.push(store);
+    };
+    for (const store of ["battlenet", "amazon"] as StoreKey[]) {
+      registerStoreClient(
+        fakeClient(store, async () => games(1), {
+          completeLogin: async () => {
+            throw transient("The account site did not answer");
+          },
+        }),
+      );
+    }
+    registerStoreClient(fakeClient("ea", async () => games(1)));
+    const fail = (store: StoreKey) =>
+      refresh.completeLogin(refresh.pendingLogin(store), { cookies: [] });
+    // Not signed in: what the window stored goes.
+    await expect(fail("battlenet")).rejects.toSatisfy(isTransient);
+    expect(cleared).toEqual(["battlenet"]);
+    // Signed in (signing in again): the account's cookies stay.
+    storage.saveSession("battlenet", session("t"), host);
+    await expect(fail("battlenet")).rejects.toSatisfy(isTransient);
+    // A token store's sign-in partition is thrown away by the window itself.
+    await expect(fail("amazon")).rejects.toThrow();
+    expect(cleared).toEqual(["battlenet"]);
+    // A sign-in that works clears nothing.
+    await refresh.completeLogin(refresh.pendingLogin("ea"), { pasted: "x" });
+    expect(cleared).toEqual(["battlenet"]);
+    // Called for a cancelled window: the same rule.
+    await refresh.forgetUnfinishedLogin("humble");
+    await refresh.forgetUnfinishedLogin("ea");
+    await refresh.forgetUnfinishedLogin("epic");
+    expect(cleared).toEqual(["battlenet", "humble"]);
+  });
+
+  it("a partition that can't be emptied is logged, and the sign-in's own error stays", async () => {
+    host.clearStoreData = async () => {
+      throw new Error("disk full");
+    };
+    registerStoreClient(
+      fakeClient("humble", async () => games(1), {
+        completeLogin: async () => {
+          throw loginRejected("Humble Bundle says you are signed out");
+        },
+      }),
+    );
+    host.logs.length = 0;
+    await expect(
+      refresh.completeLogin(refresh.pendingLogin("humble"), { pasted: "c" }),
+    ).rejects.toSatisfy(isLoginRejected);
+    expect(host.logs.join("\n")).toContain(
+      "Could not clear the Humble Bundle sign-in data: disk full",
+    );
   });
 
   it("an empty answer doesn't replace a library", async () => {

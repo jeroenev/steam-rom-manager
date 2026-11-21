@@ -833,6 +833,7 @@ describe("EA account", () => {
         library.games,
         {
           sameStoreIds: new Set(installed.map((g) => g.id)),
+          sameStoreTitles: new Set(),
           titles: new Set(),
         },
         new Set(),

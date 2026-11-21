@@ -16,17 +16,34 @@ import * as os from "os";
 import * as path from "path";
 import {
   DEFAULT_BATTLE_NET_EXE,
-  EXPLORER_EXE,
   HEROIC_FLATPAK_ID,
   HEROIC_SIGN_IN_FILES,
   HeroicRunner,
   POWERSHELL_EXE,
   defaultAmazonGamesExe,
+  explorerPath,
   galaxyPaths,
   heroicConfigDirs,
   powershellOpen,
+  powershellPath,
 } from "../helpers/launchers";
 import { OwnedGame, StoreKey } from "./types";
+
+// Store ids end up in a command line (PowerShell's -Command, a launcher's
+// arguments, a shell on Linux): only plain ids go in. A game whose id isn't
+// one gets the next way to install it (Heroic, then the store page).
+const PLAIN_ID = /^[A-Za-z0-9._:-]+$/;
+
+export function plainId(value: string | undefined): value is string {
+  return value !== undefined && PLAIN_ID.test(value);
+}
+
+const DIGITS = /^\d+$/;
+// (a store page's last part)
+const PLAIN_SLUG = /^[A-Za-z0-9._-]+$/;
+// A web page a store module named, as it can go between double quotes in a
+// command line (no quote, $, backtick, backslash or space).
+const PLAIN_PAGE = /^https:\/\/[^\s"'`$\\]+$/;
 
 // What the shortcut of a game that isn't installed opens (the Store Account
 // parser's storeInstallWith).
@@ -50,6 +67,9 @@ export interface Launchers {
   ea?: string;
   battlenet?: string;
   itch?: string;
+  // PowerShell as the EA Desktop parser runs it (where Windows is; Epic's
+  // parser always uses POWERSHELL_EXE). Unset: POWERSHELL_EXE.
+  powershell?: string;
   heroic?: HeroicInstall;
   // The stores Heroic is signed in to: it only installs games of those.
   heroicStores: StoreKey[];
@@ -151,8 +171,9 @@ export function detectLaunchers(env: DetectEnv = systemDetectEnv()): Launchers {
         ),
       ]),
       itch: first(under(["LOCALAPPDATA"], "itch", "itch.exe")),
+      powershell: powershellPath(env.env.SystemRoot),
       heroicStores: [],
-      opener: EXPLORER_EXE,
+      opener: explorerPath(env.env.SystemRoot),
       flatpak: FLATPAK,
     };
   }
@@ -282,35 +303,39 @@ function launcherTarget(
   });
   switch (game.store) {
     case "epic":
-      return launchers.epic
+      // (the Epic parser's PowerShell, which doesn't follow SystemRoot)
+      return launchers.epic && plainId(game.id)
         ? inLauncher(POWERSHELL_EXE, powershellOpen(epicInstallLink(game)))
         : undefined;
     case "gog":
       // (how Windows hands Galaxy its goggalaxy:// links)
-      return launchers.galaxy
+      return launchers.galaxy && plainId(game.id)
         ? inLauncher(
             launchers.galaxy,
             `/urlProtocol="goggalaxy://openGameView/${game.id}"`,
           )
         : undefined;
     case "amazon":
-      return launchers.amazon
+      return launchers.amazon && plainId(game.id)
         ? inLauncher(launchers.amazon, `amazon-games://install/${game.id}`)
         : undefined;
     case "ea":
-      return launchers.ea
-        ? inLauncher(POWERSHELL_EXE, powershellOpen(eaInstallLink(game)))
+      return launchers.ea && plainId(game.extra.content_id || game.id)
+        ? inLauncher(
+            launchers.powershell ?? POWERSHELL_EXE,
+            powershellOpen(eaInstallLink(game)),
+          )
         : undefined;
     case "battlenet": {
       // Games the launcher can't install (classic CD-key games, games SRM
       // doesn't know) have no internal id: they get the download page.
       const internalId = game.extra.internal_id;
-      return launchers.battlenet && internalId
+      return launchers.battlenet && plainId(internalId)
         ? inLauncher(launchers.battlenet, `--game=${internalId}`)
         : undefined;
     }
     case "itch":
-      return launchers.itch
+      return launchers.itch && DIGITS.test(game.id)
         ? {
             ...openLink(launchers, `itch://install?game_id=${game.id}&launch`),
             via: "launcher",
@@ -324,10 +349,10 @@ function launcherTarget(
 // Playnite's launch link, the one the Epic parser uses (with the game's
 // catalog ids, which a game that isn't installed needs). Playnite avoids
 // ?action=install: Epic shows an old, buggy install dialog for it. Without
-// catalog ids, the library page.
+// catalog ids (or with ids that aren't plain), the library page.
 export function epicInstallLink(game: OwnedGame) {
   const { namespace, catalog_item_id } = game.extra;
-  return namespace && catalog_item_id
+  return plainId(namespace) && plainId(catalog_item_id) && plainId(game.id)
     ? `com.epicgames.launcher://apps/${namespace}%3A${catalog_item_id}%3A${game.id}?action=launch&silent=true`
     : "com.epicgames.launcher://store/library";
 }
@@ -349,7 +374,9 @@ function heroicTarget(
   if (
     !runner ||
     !launchers.heroic ||
-    !launchers.heroicStores.includes(game.store)
+    !launchers.heroicStores.includes(game.store) ||
+    // (the link goes into the arguments unquoted)
+    !plainId(game.id)
   ) {
     return undefined;
   }
@@ -388,16 +415,23 @@ function openLink(launchers: Launchers, link: string): InstallTarget {
 }
 
 // A page where the user can get the game: the store module's `url` when it
-// has one.
+// has one. (Only pages that can go between quotes in a command line: what
+// the store sent is checked here, so a library saved before is too.)
 export function storePage(game: OwnedGame): string {
   const url = game.extra.url;
-  if (url && url.startsWith("https://")) {
+  if (url && PLAIN_PAGE.test(url)) {
     return url;
   }
-  const slug = game.extra.slug || undefined;
+  const slug =
+    game.extra.slug && PLAIN_SLUG.test(game.extra.slug)
+      ? game.extra.slug
+      : undefined;
   switch (game.store) {
     case "epic": {
-      const productSlug = game.extra.product_slug || slug;
+      const productSlug =
+        game.extra.product_slug && PLAIN_SLUG.test(game.extra.product_slug)
+          ? game.extra.product_slug
+          : slug;
       return productSlug
         ? `https://store.epicgames.com/p/${productSlug}`
         : `https://store.epicgames.com/browse?${new URLSearchParams({ q: game.title })}`;
@@ -415,7 +449,9 @@ export function storePage(game: OwnedGame): string {
     case "humble":
       return "https://www.humblebundle.com/home/library";
     case "itch":
-      return `https://itch.io/game/${game.id}`;
+      return DIGITS.test(game.id)
+        ? `https://itch.io/game/${game.id}`
+        : "https://itch.io/my-purchases";
   }
 }
 

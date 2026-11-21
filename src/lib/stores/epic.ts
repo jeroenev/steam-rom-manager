@@ -369,6 +369,11 @@ export function redirectPageRequest(cookie: string): {
         "User-Agent": LOGIN_USER_AGENT,
         Accept: "application/json",
       },
+      // The window's cookies must be all that goes: Chromium puts the
+      // partition's cookies in place of a Cookie header set by hand whenever
+      // it has any for the host (an earlier replay leaves some), and keeps
+      // what the answer sets. (BoilR sent this from a fresh client.)
+      credentials: "omit",
     },
   };
 }

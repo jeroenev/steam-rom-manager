@@ -5,6 +5,7 @@ import {
   StoreKey,
   accountStatus,
   completeLogin,
+  forgetUnfinishedLogin,
   getStoreHost,
   hostRefreshes,
   isLoginCancelled,
@@ -142,6 +143,8 @@ export class StoresStore {
       capture = await host.openLoginWindow(pending);
     } catch (err) {
       if (isLoginCancelled(err)) {
+        // (a cookie store's window may have signed in before it was closed)
+        await forgetUnfinishedLogin(key);
         return null;
       }
       throw err;

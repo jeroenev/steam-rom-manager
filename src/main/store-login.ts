@@ -21,6 +21,7 @@ import {
   StoreCookie,
   StoreKey,
 } from "../lib/stores";
+import { domainMatches } from "../lib/stores/http";
 
 export interface LoginWindowOptions {
   // SRM's window, which the login window belongs to.
@@ -127,6 +128,8 @@ function runLogin(
 
   // The login window and the pop-ups it opened (Google or Apple sign-in).
   const ours = new Set<number>();
+  // The origins those loaded pages and frames from.
+  const visited = new Set<string>();
   let settled = false;
   // The done page being loaded for its text.
   let readingPage: string | undefined;
@@ -136,6 +139,16 @@ function runLogin(
     clearTimeout(pageTimer);
     // (one listener per session: a cookie store's partition outlives this)
     ses.webRequest.onBeforeRequest(null);
+  };
+  // A cookie store's partition outlives the window: what other sites (a
+  // single sign-on with Google, Steam or Apple) left there goes. Never the
+  // store's own sites, so the store's requests through the partition aren't
+  // disturbed.
+  const sites = pending.siteDomains ?? [];
+  const forgetOtherSites = () => {
+    if (!temporary && sites.length) {
+      dropOtherSitesData(ses, sites, visited).catch(() => undefined);
+    }
   };
   const finish = async (finalUrl: string, pageText?: string) => {
     if (settled) {
@@ -156,6 +169,7 @@ function runLogin(
     if (temporary) {
       ses.clearStorageData().catch(() => undefined);
     }
+    forgetOtherSites();
   };
 
   // What to do with a navigation to `url`: hand a done URL over without
@@ -180,10 +194,20 @@ function runLogin(
   // Server redirects to the done URL are caught here, before the request
   // goes out; will-redirect and will-navigate below are the fallbacks.
   ses.webRequest.onBeforeRequest({ urls: ["*://*/*"] }, (details, callback) => {
-    const fromUs =
-      details.resourceType === "mainFrame" &&
-      details.webContentsId !== undefined &&
-      ours.has(details.webContentsId);
+    const inOurs =
+      details.webContentsId !== undefined && ours.has(details.webContentsId);
+    if (
+      inOurs &&
+      (details.resourceType === "mainFrame" ||
+        details.resourceType === "subFrame")
+    ) {
+      try {
+        visited.add(new URL(details.url).origin);
+      } catch {
+        // (not a URL with an origin)
+      }
+    }
+    const fromUs = inOurs && details.resourceType === "mainFrame";
     callback({ cancel: fromUs && reached(details.url) === "stop" });
   });
 
@@ -249,6 +273,9 @@ function runLogin(
       settled = true;
       cleanUp();
       reject(new LoginCancelled("Sign-in window closed"));
+      // (a sign-in with Google or Steam may have finished in a pop-up
+      // first)
+      forgetOtherSites();
     }
   });
 
@@ -256,6 +283,67 @@ function runLogin(
     // (the window shows Chromium's error page; closing it cancels)
   });
   return window;
+}
+
+// Whether a cookie for `cookieDomain` belongs to one of `sites` (registrable
+// domains such as "ea.com": the site and every host under it).
+export function isSiteCookie(cookieDomain: string, sites: readonly string[]) {
+  const host = cookieDomain.replace(/^\.+/, "");
+  return host !== "" && sites.some((site) => domainMatches(site, host));
+}
+
+// The storage kinds a page keeps besides cookies.
+const PAGE_STORAGES: Electron.ClearStorageDataOptions["storages"] = [
+  "localstorage",
+  "indexdb",
+  "serviceworkers",
+  "cachestorage",
+  "filesystem",
+];
+
+// Removes from `ses` every cookie that isn't one of `sites`', and what the
+// `visited` origins outside them stored in the pages' storage. (Names and
+// values are never logged.)
+export async function dropOtherSitesData(
+  ses: Pick<Session, "cookies" | "clearStorageData">,
+  sites: readonly string[],
+  visited: Iterable<string>,
+) {
+  for (const cookie of await ses.cookies.get({})) {
+    const domain = cookie.domain ?? "";
+    if (isSiteCookie(domain, sites)) {
+      continue;
+    }
+    const host = domain.replace(/^\.+/, "");
+    if (host === "") {
+      continue;
+    }
+    try {
+      await ses.cookies.remove(
+        `http${cookie.secure ? "s" : ""}://${host}${cookie.path ?? "/"}`,
+        cookie.name,
+      );
+    } catch {
+      // (the next one)
+    }
+  }
+  for (const origin of visited) {
+    let hostname: string;
+    try {
+      hostname = new URL(origin).hostname;
+    } catch {
+      continue;
+    }
+    if (isSiteCookie(hostname, sites)) {
+      continue;
+    }
+    try {
+      await ses.clearStorageData({ origin, storages: PAGE_STORAGES });
+    } catch {
+      // (the next one)
+    }
+  }
+  await ses.cookies.flushStore();
 }
 
 // The cookies `ses` sends to `urls`, values included (secret: never log

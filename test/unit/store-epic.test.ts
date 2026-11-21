@@ -164,6 +164,8 @@ describe("Epic login", () => {
     expect(request.url).toBe(epic.redirectUrl());
     expect(request.init.headers?.["User-Agent"]).toBe(pending.userAgent);
     expect(request.init.headers?.Cookie).toBe("a=1");
+    // Only the window's cookies: none of the partition's.
+    expect(request.init.credentials).toBe("omit");
   });
 
   it("replays only the cookies for www.epicgames.com", () => {

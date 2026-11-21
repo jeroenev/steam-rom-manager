@@ -23,6 +23,11 @@ export interface StoreRequestInit {
   headers?: Record<string, string>;
   body?: string;
   signal?: AbortSignal;
+  // "omit": no cookies from the store's partition go with the request, and
+  // none the answer sets are kept. For a request that carries its own Cookie
+  // header (Chromium would put the partition's in its place). Default
+  // "include".
+  credentials?: "include" | "omit";
 }
 
 export type StoreFetch = (

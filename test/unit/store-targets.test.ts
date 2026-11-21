@@ -275,6 +275,8 @@ describe("install targets", () => {
       ea: "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EADesktop.exe",
       battlenet: "C:\\Program Files (x86)\\Battle.net\\Battle.net.exe",
       itch: undefined,
+      // (no SystemRoot: where SRM always had them)
+      powershell: POWERSHELL,
       heroicStores: [],
       opener: "C:\\WINDOWS\\explorer.exe",
       flatpak: "/usr/bin/flatpak",
@@ -282,6 +284,136 @@ describe("install targets", () => {
     // Nothing installed: everything opens in the browser.
     const none = detectLaunchers(fakeEnv("Windows_NT", [], WINDOWS_ENV));
     expect(installTarget(game("gog", "1"), "auto", none).via).toBe("browser");
+  });
+
+  it("EA's shortcut and the browser follow where Windows is, as the EA Desktop parser does", () => {
+    const eaExe =
+      "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EADesktop.exe";
+    const epicExe =
+      "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe";
+    const detect = (systemRoot?: string) =>
+      detectLaunchers(
+        fakeEnv("Windows_NT", [eaExe, epicExe], {
+          ...WINDOWS_ENV,
+          ...(systemRoot === undefined ? {} : { SystemRoot: systemRoot }),
+        }),
+      );
+    const elsewhere = detect("D:\\Win");
+    const ea = installTarget(game("ea", "OFB-EAST:1"), "auto", elsewhere);
+    expect(ea.exe).toBe(
+      "D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    );
+    expect(ea.startDir).toBe("D:\\Win\\System32\\WindowsPowerShell\\v1.0");
+    // (the Epic parser always starts C:\WINDOWS's PowerShell)
+    expect(installTarget(game("epic", "X"), "auto", elsewhere).exe).toBe(
+      POWERSHELL,
+    );
+    expect(installTarget(game("gog", "1"), "auto", elsewhere)).toMatchObject({
+      exe: "D:\\Win\\explorer.exe",
+      startDir: "D:\\Win",
+      via: "browser",
+    });
+    // Where Windows is in C:\Windows (any case), or SystemRoot isn't set: the
+    // paths shortcuts have always had, so their ids stay.
+    for (const usual of [undefined, "C:\\Windows", "c:\\WINDOWS\\"]) {
+      const launchers = detect(usual);
+      expect(
+        installTarget(game("ea", "OFB-EAST:1"), "auto", launchers).exe,
+      ).toBe(POWERSHELL);
+      expect(launchers.opener).toBe("C:\\WINDOWS\\explorer.exe");
+    }
+  });
+
+  it("an id that isn't plain never goes into a command line", () => {
+    const launchers = windows({
+      epic: "C:\\Epic\\EpicGamesLauncher.exe",
+      ea: "C:\\EA\\EADesktop.exe",
+      galaxy: "C:\\GOG Galaxy\\GalaxyClient.exe",
+      amazon: "C:\\Amazon Games\\Amazon Games.exe",
+      battlenet: "C:\\Battle.net\\Battle.net.exe",
+      itch: "C:\\itch\\itch.exe",
+    });
+    const hostile = [
+      "x$(Start-Process calc)",
+      'x";calc;"',
+      "x`calc`",
+      "x --gpu-launcher=calc",
+    ];
+    const games = hostile.flatMap((id) => [
+      game("epic", id, { namespace: "ns", catalog_item_id: "cat" }),
+      game("ea", "Origin.OFR.50.1", { content_id: id }),
+      game("ea", id),
+      game("gog", id),
+      game("amazon", id),
+      game("battlenet", "Pro", { internal_id: id }),
+      game("itch", id),
+    ]);
+    for (const owned of games) {
+      const target = installTarget(owned, "auto", launchers);
+      expect(target.via, `${owned.store} ${owned.id}`).toBe("browser");
+      for (const bad of ["$(", "`", ";calc", "--gpu-launcher"]) {
+        expect(target.args).not.toContain(bad);
+      }
+    }
+    // Epic's catalog ids too: the library page instead of the game's link.
+    const sneaky = installTarget(
+      game("epic", "Fortnite", {
+        namespace: 'fn";calc;"',
+        catalog_item_id: "c",
+      }),
+      "auto",
+      launchers,
+    );
+    expect(sneaky.via).toBe("launcher");
+    expect(sneaky.args).toContain("com.epicgames.launcher://store/library");
+    expect(sneaky.args).not.toContain("calc");
+    // Heroic: no link for such an id.
+    const heroic = linux({
+      heroic: { kind: "native", exe: "heroic" },
+      heroicStores: ["epic", "gog", "amazon"],
+    });
+    for (const id of ["x;calc", "x $(calc)", "x&&calc"]) {
+      const target = installTarget(game("gog", id), "heroic", heroic);
+      expect(target.via).toBe("browser");
+      expect(target.args).toBe('"https://www.gog.com/account"');
+    }
+    // Real ids pass.
+    expect(
+      installTarget(game("ea", "OFB-EAST:52735"), "auto", launchers).via,
+    ).toBe("launcher");
+    expect(
+      installTarget(
+        game("amazon", "amzn1.adg.product.1a2b-3c"),
+        "auto",
+        launchers,
+      ).via,
+    ).toBe("launcher");
+    expect(installTarget(game("itch", "42"), "auto", launchers).via).toBe(
+      "launcher",
+    );
+  });
+
+  it("a store page that can't go between quotes isn't used", () => {
+    for (const url of [
+      'https://www.humblebundle.com/x"&calc&"',
+      "https://www.humblebundle.com/$(calc)",
+      "https://www.humblebundle.com/`calc`",
+      "https://www.humblebundle.com/a b",
+      "https://www.humblebundle.com/a\\b",
+    ]) {
+      expect(storePage(game("humble", "h", { url }))).toBe(
+        "https://www.humblebundle.com/home/library",
+      );
+    }
+    expect(storePage(game("itch", "x$(calc)"))).toBe(
+      "https://itch.io/my-purchases",
+    );
+    expect(storePage(game("gog", "1", { slug: 'a"b' }))).toBe(
+      "https://www.gog.com/account",
+    );
+    expect(
+      storePage(ownedGame("epic", "x", "Alan Wake 2", { product_slug: "a b" })),
+    ).toBe("https://store.epicgames.com/browse?q=Alan+Wake+2");
   });
 
   it("detects Heroic and the stores it's signed in to on Linux", () => {
