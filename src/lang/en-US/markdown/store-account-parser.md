@@ -4,6 +4,8 @@ This parser signs in to your account at a game store and adds every game the acc
 
 Games you have installed are not added by this parser: add those with the parser for the store's launcher (Epic, GOG Galaxy, Amazon Games, EA Desktop, Battle.net, itch.io, Legendary). On Linux, a game you installed through Heroic is the exception: SRM has no parser for Heroic's games, so when this parser's shortcut starts the game through Heroic, it keeps that shortcut (see [Keeping the shortcut when you install the game](#keeping-the-shortcut-when-you-install-the-game)).
 
+SRM can't see every install, though: a Humble Bundle game, and on Linux an EA app or Battle.net game installed under Wine (Lutris, Bottles), keeps its shortcut here after you have installed it. Exclude such a game on the **Add Games** page (a game's details, or `Manage Excludes`).
+
 Use one Store Account parser per store account. By default its games go into the Steam collection **Not installed**: Steam has no "not installed" state for a shortcut, so the collection is where that shows.
 
 ## Stores
@@ -20,7 +22,7 @@ Use one Store Account parser per store account. By default its games go into the
 
 - **EA app, Battle.net and Humble Bundle** keep their sign-in in the store's cookies. SRM keeps them for that store apart from SRM's window, and sends them and takes the store's renewals as a browser does. While they are valid, the sign-in window signs straight back into the same account: to sign in to another account, sign out first.
 - **Battle.net**: the classic games of an account (Warcraft III, Diablo II) and games SRM doesn't know open Battle.net's download page. Battle.net's China region is not supported.
-- **Humble Bundle** lists the DRM-free games with a Windows or Linux download. A game that came with a key for another store (such as Steam) is left out: it is in that store's library. Humble has no launcher, so a shortcut opens the game's page in your Humble library, where you download it.
+- **Humble Bundle** lists the DRM-free games with a Windows or Linux download. A game that came with a key for another store (such as Steam) is left out: it is in that store's library. Humble has no launcher, so a shortcut opens the game's page in your Humble library, where you download it. SRM can't tell when you have installed a Humble game, so its shortcut stays once you have: exclude it on the **Add Games** page.
 
 ## A game several stores own
 
@@ -30,7 +32,7 @@ Change the order, or have a shortcut from every store, in **Settings**, **Owned 
 
 A shortcut's id is made from its program and its title, so where two stores' shortcuts run the same program, the same title is the same Steam shortcut: the browser runs those of Humble Bundle, of itch.io without the itch app, and of any store whose launcher isn't installed; PowerShell runs those of the Epic Games Store and the EA app. Then only the shortcut of the store that comes first in the store order is added, also with a shortcut from every store, and the log counts the others. A title modifier per parser keeps them apart.
 
-This is only between Store Account parsers: a game installed through any launcher is left out by the parser itself (see its settings), and the shortcut of another parser is never left out.
+This is only between Store Account parsers: a game installed through a launcher SRM reads is left out by the parser itself (see its settings), and the shortcut of another parser is never left out.
 
 ## Settings
 

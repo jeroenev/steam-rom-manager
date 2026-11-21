@@ -36,4 +36,6 @@ A game installed through the store's own launcher is always left out (it is matc
 - **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match). A game kept because Heroic installed it from this store stays.
 - **Leave out games Steam has installed** (on by default): a game Steam itself has installed, with the same title.
 
+Humble Bundle has no launcher, and on Linux SRM doesn't read the EA app or Battle.net under Wine (Lutris, Bottles), so those installed games aren't seen: exclude them on the **Add Games** page (a game's details, or `Manage Excludes`). For the EA app, an EA Desktop parser (even a disabled one) whose **Extra EA Games Directory** is the Wine prefix's EA games folder makes its installs visible.
+
 A game the Store Account parser of another store also lists, with the same title, gets one shortcut, from the store that comes first in the store order in **Settings**, **Owned Games** (or one from every store, as set there).
