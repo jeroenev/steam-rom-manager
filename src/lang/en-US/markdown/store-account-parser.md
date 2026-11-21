@@ -47,9 +47,11 @@ In **Settings**, **Owned Games**, for every Store Account parser:
 
 A game that isn't installed opens, in this order:
 
-1. **The store's launcher**, on the game's page or install dialog (the Epic Games Launcher, GOG Galaxy, Amazon Games, the EA app, Battle.net, the itch app), when it's installed.
+1. **The store's launcher**, on the game's page or install dialog, when it's installed: on Windows, the Epic Games Launcher, GOG Galaxy, Amazon Games, the EA app, Battle.net or the itch app; on Linux, only the itch app.
 2. **Heroic** (Linux), for Epic, GOG and Amazon games, when Heroic is signed in to that store. Both Heroic's Flatpak and a native Heroic work.
-3. **The game's store page** in your browser.
+3. **A page in your browser**: the game's page at the Epic Games Store, GOG and itch.io (a search, account or purchases page when SRM doesn't know the game's page), and the game's page in your Humble library. For the EA app, Amazon Games and Battle.net it is the store's own page, not the game's: the EA app's download page, Amazon Gaming's home page and Battle.net's download page.
+
+On macOS, SRM doesn't look for launchers: every shortcut opens the browser. On Linux, EA app, Battle.net and Humble Bundle shortcuts always open the browser, and Epic, GOG and Amazon ones do when Heroic isn't signed in to that store.
 
 ## Artwork
 

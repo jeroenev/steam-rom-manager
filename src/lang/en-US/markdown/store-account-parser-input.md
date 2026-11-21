@@ -26,7 +26,7 @@ With SRM's **Offline mode** on, libraries are not fetched by themselves; the par
 
 - **The store's launcher** (default): the store's launcher when it is installed, else Heroic (Linux) when it is signed in to the store, else the store page.
 - **Heroic first**: Heroic (Linux) when it is signed in to the store, else the store's launcher, else the store page.
-- **The store page in your browser**: always the game's page on the store's site.
+- **The store page in your browser**: always a page on the store's site: the game's page where SRM knows it (see the parser's help, **What a shortcut opens**).
 
 ## Games left out
 
