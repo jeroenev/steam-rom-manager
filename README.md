@@ -12,13 +12,42 @@
 [![Discord](https://img.shields.io/discord/488621078302949377?color=5865F2&label=SRM&logo=discord&logoColor=white)](https://discord.gg/bnSVJrz)
 A temporary fix is to host the tag service myself-->
 
+# This fork: the `extended` branch
+
+This is [jeroenev/steam-rom-manager](https://github.com/jeroenev/steam-rom-manager), a fork of [SteamGridDB/steam-rom-manager](https://github.com/SteamGridDB/steam-rom-manager). Its default branch, `extended`, is upstream's `master` plus three features, ported from [BoilR](https://github.com/PhilipK/BoilR). Everything else in this README is upstream's and still applies.
+
+| Feature | Branch | What it does |
+| --- | --- | --- |
+| EA app installed games | `ea-app-installed-games` | The EA Desktop parser also finds games the EA app installed outside `C:\Program Files (x86)\EA Games`, by reading Windows' uninstall registry. |
+| Wait for the launcher's game | `launch-and-wait` | EA app and Ubisoft Connect shortcuts stay running in Steam while the game does, so Steam shows "playing" and counts playtime. The UPlay parser's launcher mode lists games from the registry. |
+| Owned games | `owned-games` | The new Store Account parser signs in to Epic, GOG, Amazon Games, the EA app, Battle.net, Humble Bundle or itch.io and adds the games the account owns but hasn't installed, in the Steam collection "Not installed". Each shortcut installs its game. Sign-in sessions are encrypted with Electron's `safeStorage`. |
+
+Each feature also lives on its own branch (and pull request on this fork), based on upstream's `master`, so it can be proposed upstream separately. `extended` is rebuilt by merging them, plus two commits that only exist here: docs for how a game waited on interacts with Store Account shortcuts, and the update source below.
+
+## Releases and updates
+
+The fork publishes no releases yet, so build and install it yourself (see [Building SRM](#building-srm)). On Windows: `yarn build:dist`, then `npx electron-builder --win nsis --x64 --publish never`, then run the installer in `release/`.
+
+The app is still called Steam ROM Manager and uses the same data folder as upstream SRM, so your parsers and settings carry over. Its update check (`build.publish` in `package.json`) points at this fork's releases, not upstream's: an upstream release would otherwise offer to replace it with a version without these features. The version number is upstream's (2.6.3), so a fork release will need its own tag.
+
+## Staying up to date with upstream
+
+```
+git remote add upstream https://github.com/SteamGridDB/steam-rom-manager.git
+git fetch upstream
+git switch extended
+git merge upstream/master
+```
+
+Conflicts, if any, are most likely in `src/lib/parsers/`, `src/lib/launch-wrapper/` and `src/lang/en-US/`.
+
 # Overview
 
 Steam ROM Manager (SRM) is a super flexible tool for adding non-Steam games to Steam in bulk and managing their artwork assets and controller templates. Added games could be ROMs for emulators, games from other stores such as Epic or GOG, or even not games at all. Have you always wanted your notes from junior year as a category in steam? If so that's pretty weird! But now it's possible.
 
 For an overview of how SRM works see [here](https://steamgriddb.github.io/steam-rom-manager/). There is plenty of documentation available in the app's built in FAQ and documentation, and if you need further help there are expert users to be found on the [SGDB discord](https://discord.gg/bnSVJrz) under the Steam ROM Manager category and the [SRM subreddit](https://www.reddit.com/r/SteamRomManager/).
 
-Check out the [releases page](https://github.com/SteamGridDB/steam-rom-manager/releases) for compiled downloads for Windows (exe, msi), macOS (dmg), and Linux (AppImage, deb).
+Check out the [releases page](https://github.com/SteamGridDB/steam-rom-manager/releases) for compiled downloads of upstream SRM (without the features of this fork) for Windows (exe, msi), macOS (dmg), and Linux (AppImage, deb).
 
 The Windows version is also available as a [Chocolatey package](https://community.chocolatey.org/packages/steam-rom-manager).
 
