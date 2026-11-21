@@ -1,6 +1,5 @@
 import {
   AccountStatus,
-  STORE_KEYS,
   STORE_NAMES,
   StoreKey,
   accountStatus,
@@ -108,10 +107,6 @@ export class StoresStore {
       paste: status.available ? this.pasteLogin(key, status) : null,
       secretsWarning,
     };
-  }
-
-  statuses(): StoreAccountView[] {
-    return STORE_KEYS.map((store) => this.status(store));
   }
 
   // Tells `listener` which store's account changed (sign-in, a refresh

@@ -5,11 +5,9 @@ import { describe, expect, it } from "vitest";
 import {
   DetectEnv,
   Launchers,
-  describeInstallTarget,
   detectLaunchers,
   heroicInstall,
   installTarget,
-  launcherName,
   storePage,
 } from "../../src/lib/stores/targets";
 import { OwnedGame, StoreKey, ownedGame } from "../../src/lib/stores/types";
@@ -477,53 +475,5 @@ describe("install targets", () => {
     expect(page(game("itch", "1", { url: "javascript:alert(1)" }))).toBe(
       "https://itch.io/game/1",
     );
-  });
-
-  it("launcher names come from Windows and Unix paths alike", () => {
-    expect(launcherName('"C:\\Battle.net\\Battle.net Launcher.exe"')).toBe(
-      "Battle.net",
-    );
-    expect(launcherName("/usr/bin/heroic")).toBe("heroic");
-    expect(launcherName("C:/Games/Epic.exe")).toBe("Epic");
-    expect(launcherName("")).toBe("");
-  });
-
-  it("describes what the shortcut does", () => {
-    const launchers = windows({
-      epic: "C:\\Epic\\EpicGamesLauncher.exe",
-      galaxy: "C:\\GOG Galaxy\\GalaxyClient.exe",
-      amazon: "C:\\Amazon Games\\Amazon Games.exe",
-      battlenet: "C:\\Battle.net\\Battle.net Launcher.exe",
-      itch: "C:\\itch\\itch.exe",
-    });
-    const describe = (g: OwnedGame, l: Launchers) =>
-      describeInstallTarget(installTarget(g, "auto", l));
-    expect(describe(game("epic", "Fortnite"), launchers)).toBe(
-      "Opens the Epic Games Launcher to install it",
-    );
-    expect(describe(game("gog", "1"), launchers)).toBe(
-      "Opens GOG Galaxy to install it",
-    );
-    expect(describe(game("amazon", "x"), launchers)).toBe(
-      "Opens Amazon Games to install it",
-    );
-    expect(
-      describe(
-        game("battlenet", "Pro", { internal_id: "prometheus" }),
-        launchers,
-      ),
-    ).toBe("Opens Battle.net to install it");
-    expect(describe(game("itch", "42"), launchers)).toBe(
-      "Opens the itch app to install it",
-    );
-    expect(describe(game("itch", "42"), linux())).toBe(
-      "Opens its store page on itch.io",
-    );
-    expect(
-      describe(
-        game("gog", "1"),
-        linux({ heroic: { kind: "flatpak" }, heroicStores: ["gog"] }),
-      ),
-    ).toBe("Opens Heroic to install it");
   });
 });

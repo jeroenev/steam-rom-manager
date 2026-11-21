@@ -28,15 +28,11 @@ import {
   isStoreKey,
 } from "./types";
 
-// Where everything lives; tests point it elsewhere.
-let root = storesDir;
+// Where everything lives.
+const root = storesDir;
 
 export function storesRoot() {
   return root;
-}
-
-export function setStoresRoot(dir: string) {
-  root = dir;
 }
 
 export function storeFolder(store: StoreKey) {

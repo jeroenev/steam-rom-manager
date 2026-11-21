@@ -119,7 +119,7 @@ export const rpcApi = {
   // "stores:changed" events. Sign-ins run in main (the sign-in window, the
   // user's browser): no secret ever reaches the UI.
   stores: {
-    sync: ["status", "statuses", "beginLogin"],
+    sync: ["status", "beginLogin"],
     async: [
       "loginWithWindow",
       "openSignInPage",
