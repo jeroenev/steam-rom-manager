@@ -137,6 +137,16 @@ describe("store accounts over IPC", () => {
     await expect(service.submitPaste("itch", "not a key")).rejects.toThrow(
       "not an itch.io API key",
     );
+    // A key itch.io refuses: the UI shows the store's words, without the
+    // IPC wrapping or the error's kind (LoginRejected) in front of them.
+    const refused = await service.submitPaste("itch", "WrongKey9").then(
+      () => null,
+      (err) => err,
+    );
+    expect(service.errorText(refused)).toBe(
+      "itch.io rejected the API key (invalid key). Create a new key at https://itch.io/user/settings/api-keys and sign in again.",
+    );
+    expect(service.status("itch").signedIn).toBe(false);
     const message = await service.submitPaste("itch", ` ${ITCH_KEY}\n`);
     expect(message).toMatch(
       /^Signed in to itch\.io as leafo\. The account owns \d+ games\.$/,

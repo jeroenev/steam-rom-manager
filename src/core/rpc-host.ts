@@ -116,7 +116,14 @@ export function hostCore(
     if (!isAllowed(target, method, "async")) {
       throw new Error(`Not allowed: ${target}.${method}`);
     }
-    return targets[target][method](...args);
+    try {
+      return await targets[target][method](...args);
+    } catch (e) {
+      // Only the message crosses, as with sync calls: Electron sends the
+      // error's toString(), which puts its kind in front of the message
+      // ("LoginRejected: …"), and the UI would show that.
+      throw new Error(text(e), { cause: e });
+    }
   });
 
   const callSync = ({
