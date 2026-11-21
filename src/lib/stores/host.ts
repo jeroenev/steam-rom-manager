@@ -54,8 +54,10 @@ export interface StoreHost {
   // Opens a page in the user's browser.
   openExternal(url: string): Promise<void>;
   // Cookie stores: puts cookies (a pasted session) in the store's partition,
-  // and empties it on sign-out.
+  // reads the ones it sends to `url` (values included: secret, never log
+  // them), and empties it on sign-out.
   setCookies?(store: StoreKey, cookies: StoreCookie[]): Promise<void>;
+  cookies?(store: StoreKey, url: string): Promise<StoreCookie[]>;
   clearStoreData?(store: StoreKey): Promise<void>;
   // A warning for the log (already without secrets).
   log?(message: string): void;

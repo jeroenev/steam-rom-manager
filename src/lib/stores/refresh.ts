@@ -24,6 +24,7 @@ import { storeClient } from "./registry";
 import * as storage from "./storage";
 import {
   AccountStatus,
+  COOKIE_STORES,
   ListContext,
   LoginCapture,
   OwnedGame,
@@ -144,11 +145,23 @@ function storeContext(
   host: StoreHost,
   signal?: AbortSignal,
 ): StoreContext {
-  return {
+  const ctx: StoreContext = {
     http: new StoreHttp(host.fetchFor(store), { signal }),
     now: () => clock(),
     log: (message) => log(host, message),
   };
+  // (only a cookie store's partition holds its login)
+  if (COOKIE_STORES.includes(store)) {
+    if (host.cookies) {
+      const read = host.cookies.bind(host);
+      ctx.cookies = (url) => read(store, url);
+    }
+    if (host.setCookies) {
+      const set = host.setCookies.bind(host);
+      ctx.setCookies = (cookies) => set(store, cookies);
+    }
+  }
+  return ctx;
 }
 
 function needsRefreshingHost(host: StoreHost, store: StoreKey) {

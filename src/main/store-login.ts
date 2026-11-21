@@ -258,8 +258,9 @@ function runLogin(
   return window;
 }
 
-// The cookies the store module asked for, one per name and domain.
-async function readCookies(
+// The cookies `ses` sends to `urls`, values included (secret: never log
+// them), one per name and domain.
+export async function readCookies(
   ses: Session,
   urls: readonly string[],
 ): Promise<StoreCookie[]> {

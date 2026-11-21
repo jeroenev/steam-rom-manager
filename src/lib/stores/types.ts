@@ -53,7 +53,8 @@ export interface OwnedGame {
   // The store's own id for the game, the one its launcher (and SRM's parser
   // for that launcher) uses, so an owned game and its installed copy can be
   // matched: Epic appName, GOG product id, Amazon product id, EA offer id,
-  // Battle.net launcher code, Humble machine_name, itch game id.
+  // Battle.net launcher code, Humble subproduct id (the old machine_name
+  // where the site still sends one), itch game id.
   id: string;
   title: string;
   // What the install target needs besides the id; the keys are listed in
@@ -79,7 +80,8 @@ export interface StoreSession {
   data: { [key: string]: any };
 }
 
-// A cookie from a login window (cookie stores, later).
+// A cookie: from a login window, a store's browser partition, or a paste.
+// Its value is secret: never log it.
 export interface StoreCookie {
   name: string;
   value: string;
@@ -163,6 +165,13 @@ export interface StoreContext {
   now(): number;
   // A warning for the log; secrets are taken out first.
   log(message: string): void;
+  // Cookie stores, where the host has their browser partitions: the cookies
+  // the partition sends to `url`, values included (Battle.net's XSRF-TOKEN).
+  // Secret: never log them.
+  cookies?(url: string): Promise<StoreCookie[]>;
+  // Cookie stores, where the host has their browser partitions: puts cookies
+  // (a pasted sign-in) into the store's partition.
+  setCookies?(cookies: StoreCookie[]): Promise<void>;
 }
 
 // What listLibrary gets besides the session.

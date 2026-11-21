@@ -14,6 +14,7 @@ import {
 } from "../../src/lib/stores/http";
 import {
   registerStoreClient,
+  storeClient,
   unregisterStoreClient,
 } from "../../src/lib/stores/registry";
 import * as refresh from "../../src/lib/stores/refresh";
@@ -103,8 +104,12 @@ async function commit(
   });
 }
 
-// Stores no test registers a client for keep theirs; these get fakes.
+// The stores whose clients the tests replace with fakes; their real clients
+// come back after each test.
 const FAKE_STORES: StoreKey[] = ["epic", "amazon", "ea", "battlenet", "humble"];
+const realClients = new Map(
+  FAKE_STORES.map((store) => [store, storeClient(store)] as const),
+);
 
 describe("store accounts", () => {
   beforeEach(() => {
@@ -116,9 +121,15 @@ describe("store accounts", () => {
     for (const store of STORE_KEYS) {
       await refresh.deleteAccount(store);
     }
-    for (const store of FAKE_STORES) {
-      unregisterStoreClient(store);
+    for (const [store, client] of realClients) {
+      if (client) {
+        registerStoreClient(client);
+      } else {
+        unregisterStoreClient(store);
+      }
     }
+    delete host.cookies;
+    delete host.setCookies;
   });
   afterAll(() => setStoreHost(readOnlyStoreHost));
 
@@ -175,7 +186,43 @@ describe("store accounts", () => {
     expect(refresh.pendingLogin("amazon")).toBe(pending);
   });
 
+  it("a cookie store's module reaches its own browser partition, a token store's doesn't", async () => {
+    const asked: string[] = [];
+    host.cookies = async (store, url) => {
+      asked.push(`read ${store} ${url}`);
+      return [{ name: "XSRF-TOKEN", value: "x", domain: "account.example" }];
+    };
+    host.setCookies = async (store, cookies) => {
+      asked.push(`set ${store} ${cookies.map((c) => c.name).join(",")}`);
+    };
+    const reached: Partial<Record<StoreKey, boolean>> = {};
+    for (const store of ["battlenet", "epic"] as StoreKey[]) {
+      registerStoreClient(
+        fakeClient(store, async (_session, ctx) => {
+          reached[store] = !!ctx.cookies || !!ctx.setCookies;
+          if (ctx.cookies && ctx.setCookies) {
+            expect(await ctx.cookies("https://account.example/")).toHaveLength(
+              1,
+            );
+            await ctx.setCookies([
+              { name: "pasted", value: "v", domain: ".example" },
+            ]);
+          }
+          return games(1);
+        }),
+      );
+      storage.saveSession(store, session("t"), host);
+      await refresh.refreshLibrary(store);
+    }
+    expect(reached).toEqual({ battlenet: true, epic: false });
+    expect(asked).toEqual([
+      "read battlenet https://account.example/",
+      "set battlenet pasted",
+    ]);
+  });
+
   it("stores SRM can't sign in to yet say so", async () => {
+    unregisterStoreClient("humble");
     const status = refresh.accountStatus("humble");
     expect(status.available).toBe(false);
     expect(status.signedIn).toBe(false);

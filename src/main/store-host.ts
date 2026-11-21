@@ -23,7 +23,7 @@ import {
   StoreResponse,
 } from "../lib/stores";
 import { loadSession } from "../lib/stores/storage";
-import { openLoginWindow } from "./store-login";
+import { openLoginWindow, readCookies } from "./store-login";
 
 export interface ElectronStoreHostOptions {
   // SRM's window: login windows open as its children. Without it (the
@@ -116,6 +116,9 @@ export function electronStoreHost(
         await ses.cookies.set(cookieDetails(cookie));
       }
     },
+    // (values included: never log them)
+    cookies: (store, url) =>
+      readCookies(session.fromPartition(storePartition(store)), [url]),
     clearStoreData: async (store) => {
       const ses = session.fromPartition(storePartition(store));
       await ses.clearStorageData();
@@ -138,6 +141,8 @@ function readableSession(store: StoreKey, host: StoreHost) {
   }
 }
 
+// A pasted cookie for the partition: for the whole site, over HTTPS only (a
+// __Host- cookie needs both, and no domain).
 function cookieDetails(cookie: StoreCookie): Electron.CookiesSetDetails {
   const host = cookie.domain.replace(/^\./, "");
   return {
@@ -145,6 +150,7 @@ function cookieDetails(cookie: StoreCookie): Electron.CookiesSetDetails {
     name: cookie.name,
     value: cookie.value,
     domain: cookie.domain.startsWith(".") ? cookie.domain : undefined,
+    path: "/",
     secure: true,
   };
 }

@@ -29,6 +29,11 @@ import {
 } from "../../src/lib/parsers/store-account.parser";
 import { readOnlyStoreHost, setStoreHost } from "../../src/lib/stores/host";
 import * as refresh from "../../src/lib/stores/refresh";
+import {
+  registerStoreClient,
+  storeClient,
+  unregisterStoreClient,
+} from "../../src/lib/stores/registry";
 import * as storage from "../../src/lib/stores/storage";
 import {
   InstalledGame,
@@ -322,9 +327,18 @@ describe("Store Account parser (characterization)", () => {
     await expect(parse(config({}))).rejects.toThrow(
       "Not signed in to GOG. Sign in under **Account**",
     );
-    await expect(parse(config({ storeAccount: "epic" }))).rejects.toThrow(
-      "Signing in to Epic Games Store comes with a later version of SRM",
-    );
+    // (a store this version has no client for)
+    const epic = storeClient("epic");
+    unregisterStoreClient("epic");
+    try {
+      await expect(parse(config({ storeAccount: "epic" }))).rejects.toThrow(
+        "Signing in to Epic Games Store comes with a later version of SRM",
+      );
+    } finally {
+      if (epic) {
+        registerStoreClient(epic);
+      }
+    }
     storage.saveSession("gog", { accountName: "player", data: {} }, host);
     await expect(parse(config({}))).rejects.toThrow(
       "The games of the GOG account haven't been fetched",

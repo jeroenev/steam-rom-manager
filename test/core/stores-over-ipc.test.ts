@@ -15,6 +15,11 @@ import {
   setStoreHost,
 } from "../../src/lib/stores/host";
 import * as refresh from "../../src/lib/stores/refresh";
+import {
+  registerStoreClient,
+  storeClient,
+  unregisterStoreClient,
+} from "../../src/lib/stores/registry";
 import { STORE_KEYS } from "../../src/lib/stores/types";
 import {
   StoreAccountParser,
@@ -196,15 +201,23 @@ describe("store accounts over IPC", () => {
 
   it("stores that come later say so; unknown stores are refused", async () => {
     const { service } = await makeService();
-    expect(service.status("epic")).toMatchObject({
-      available: false,
-      windowLogin: false,
-      paste: null,
-    });
+    const epic = storeClient("epic");
+    unregisterStoreClient("epic");
+    try {
+      expect(service.status("epic")).toMatchObject({
+        available: false,
+        windowLogin: false,
+        paste: null,
+      });
+      await expect(service.refresh("epic")).rejects.toThrow(
+        "comes with a later version of SRM",
+      );
+    } finally {
+      if (epic) {
+        registerStoreClient(epic);
+      }
+    }
     expect(() => service.status("steam")).toThrow("Unknown store: steam");
-    await expect(service.refresh("epic")).rejects.toThrow(
-      "comes with a later version of SRM",
-    );
   });
 
   it("at start, fetches the old libraries of the stores enabled parsers use, unless offline", async () => {

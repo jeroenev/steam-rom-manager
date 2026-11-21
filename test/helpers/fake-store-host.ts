@@ -10,6 +10,7 @@ import {
 import {
   LoginCapture,
   PendingLogin,
+  StoreCookie,
   StoreKey,
 } from "../../src/lib/stores/types";
 
@@ -38,6 +39,10 @@ export class FakeStoreHost implements StoreHost {
   refreshes?: (store: StoreKey) => boolean;
   openLoginWindow?: (pending: PendingLogin) => Promise<LoginCapture>;
   secretsWarning?: () => string | undefined;
+  // A cookie store's browser partition.
+  setCookies?: (store: StoreKey, cookies: StoreCookie[]) => Promise<void>;
+  cookies?: (store: StoreKey, url: string) => Promise<StoreCookie[]>;
+  clearStoreData?: (store: StoreKey) => Promise<void>;
   requests: FakeRequest[] = [];
   opened: string[] = [];
   logs: string[] = [];
