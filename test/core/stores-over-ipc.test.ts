@@ -199,6 +199,49 @@ describe("store accounts over IPC", () => {
     });
   });
 
+  it("a second sign-in while the window is open shows it again and completes the login once", async () => {
+    const { service } = await makeService();
+    const asked: unknown[] = [];
+    let close!: (capture: { finalUrl: string }) => void;
+    const window = new Promise<{ finalUrl: string }>((resolve) => {
+      close = resolve;
+    });
+    host.openLoginWindow = (pending) => {
+      asked.push(pending);
+      return window;
+    };
+    host.requests.length = 0;
+    // (another parser editor of the same store, with its own Sign in)
+    const first = service.loginWithWindow("gog");
+    const second = service.loginWithWindow("gog");
+    await settle();
+    expect(asked).toHaveLength(2);
+    expect(asked[1]).toBe(asked[0]);
+    close({
+      finalUrl:
+        "https://embed.gog.com/on_login_success?origin=client&code=good-code",
+    });
+    const [one, two] = await Promise.all([first, second]);
+    expect(one).toMatch(
+      /^Signed in to GOG as .+\. The account owns \d+ games\.$/,
+    );
+    expect(two).toBe(one);
+    // The single-use code went to GOG once.
+    expect(
+      host.requests.filter(
+        (request) => new URL(request.url).host === "auth.gog.com",
+      ),
+    ).toHaveLength(1);
+
+    // Done: the next sign-in is a new one, with a window of its own.
+    host.openLoginWindow = async (pending) => {
+      asked.push(pending);
+      throw new LoginCancelled("Sign-in window closed");
+    };
+    expect(await service.loginWithWindow("gog")).toBeNull();
+    expect(asked).toHaveLength(3);
+  });
+
   it("a cookie store's sign-in window closed before the end leaves nothing in its partition", async () => {
     const { service } = await makeService();
     const cleared: string[] = [];

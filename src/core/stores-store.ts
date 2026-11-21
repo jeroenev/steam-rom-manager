@@ -50,9 +50,18 @@ export interface PasteLogin {
   placeholder: string;
 }
 
+// A sign-in with SRM's window that is running.
+interface WindowLogin {
+  windowOpen: boolean;
+  result: Promise<string | null>;
+}
+
 // The store accounts of the Store Account parsers: sign-in, the libraries
 // and their refreshes (src/lib/stores does the work). One per Core.
 export class StoresStore {
+  // The sign-ins with SRM's window running, per store.
+  private windowLogins = new Map<StoreKey, WindowLogin>();
+
   constructor(
     private logger: Logger,
     private settings: SettingsStore,
@@ -134,11 +143,25 @@ export class StoresStore {
 
   // Signs in with SRM's sign-in window, then fetches the games. Returns what
   // to tell the user, or null when they closed the window.
+  //
+  // One at a time per store: another "Sign in" while it runs (a new parser
+  // editor of the same store) shows the window again and waits for the same
+  // result, so the login is completed once (a store's login code can only
+  // be used once).
   async loginWithWindow(store: string): Promise<string | null> {
     const key = this.key(store);
-    const host = getStoreHost();
-    if (!host.openLoginWindow) {
+    const openWindow = getStoreHost().openLoginWindow;
+    if (!openWindow) {
       throw new Error(this.lang.noLoginWindowHere);
+    }
+    const running = this.windowLogins.get(key);
+    if (running) {
+      // (only while it's open: once it has closed, asking again would open
+      // another one, for another sign-in)
+      if (running.windowOpen) {
+        openWindow(pendingLogin(key)).catch(() => undefined);
+      }
+      return running.result;
     }
     const pending = pendingLogin(key);
     if (!pending.doneUrlPrefixes.length) {
@@ -146,19 +169,33 @@ export class StoresStore {
         this.lang.noLoginWindow__i.interpolate({ store: STORE_NAMES[key] }),
       );
     }
-    let capture;
-    try {
-      capture = await host.openLoginWindow(pending);
-    } catch (err) {
-      if (isLoginCancelled(err)) {
-        // (a cookie store's window may have signed in before it was closed)
-        await forgetUnfinishedLogin(key);
-        return null;
+    const entry: WindowLogin = { windowOpen: true, result: undefined! };
+    entry.result = (async () => {
+      let capture;
+      try {
+        capture = await openWindow(pending);
+      } catch (err) {
+        if (isLoginCancelled(err)) {
+          // (a cookie store's window may have signed in before it was
+          // closed)
+          await forgetUnfinishedLogin(key);
+          return null;
+        }
+        throw err;
+      } finally {
+        entry.windowOpen = false;
       }
-      throw err;
-    }
-    const name = await completeLogin(pending, capture);
-    return this.afterSignIn(key, name);
+      const name = await completeLogin(pending, capture);
+      return this.afterSignIn(key, name);
+    })();
+    this.windowLogins.set(key, entry);
+    const forget = () => {
+      if (this.windowLogins.get(key) === entry) {
+        this.windowLogins.delete(key);
+      }
+    };
+    entry.result.then(forget, forget);
+    return entry.result;
   }
 
   // Opens the sign-in page in the user's browser; the user pastes what the
