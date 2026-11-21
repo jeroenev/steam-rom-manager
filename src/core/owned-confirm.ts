@@ -4,14 +4,16 @@
 import { PreviewData, PreviewDataApp } from "../models";
 
 // The Store Account apps of `previewData` that saving adds to Steam as new
-// shortcuts (one per Steam user).
+// shortcuts: one per Steam user that doesn't have the game yet, with its
+// app id (the same game's for every user: it's made from program and
+// title).
 function ownedToAdd(
   previewData: PreviewData | undefined | null,
-): PreviewDataApp[] {
-  const apps: PreviewDataApp[] = [];
+): { appID: string; app: PreviewDataApp }[] {
+  const apps: { appID: string; app: PreviewDataApp }[] = [];
   for (const steamDirectory in previewData ?? {}) {
     for (const userId in previewData[steamDirectory]) {
-      for (const app of Object.values(
+      for (const [appID, app] of Object.entries(
         previewData[steamDirectory][userId].apps,
       )) {
         if (
@@ -19,7 +21,7 @@ function ownedToAdd(
           app.status === "add" &&
           app.notInSteam
         ) {
-          apps.push(app);
+          apps.push({ appID, app });
         }
       }
     }
@@ -27,12 +29,14 @@ function ownedToAdd(
   return apps;
 }
 
-// How many Store Account shortcuts saving `previewData` adds that Steam
-// doesn't have yet.
+// How many games saving `previewData` adds through Store Account shortcuts
+// that Steam doesn't have yet (for at least one Steam user): each game
+// once, however many Steam users get it, since the limit it's compared
+// with (ownedGames.confirmAbove) is a number of games.
 export function ownedShortcutsToAdd(
   previewData: PreviewData | undefined | null,
 ): number {
-  return ownedToAdd(previewData).length;
+  return new Set(ownedToAdd(previewData).map(({ appID }) => appID)).size;
 }
 
 // After a save: those shortcuts are in Steam now, so saving the same list
@@ -40,7 +44,7 @@ export function ownedShortcutsToAdd(
 export function ownedShortcutsSaved(
   previewData: PreviewData | undefined | null,
 ) {
-  for (const app of ownedToAdd(previewData)) {
+  for (const { app } of ownedToAdd(previewData)) {
     app.notInSteam = false;
   }
 }

@@ -74,7 +74,7 @@ The stores, most preferred first: when several own a game, the first one's short
 
 ### Ask before adding more games that aren't installed than this `[Default 100]`
 
-Before `Save to Steam` adds more Store Account shortcuts that aren't in Steam yet than this, SRM asks first. `0` never asks. The command line never asks.
+Before `Save to Steam` adds more games that aren't installed and that Steam doesn't have yet (for any of your Steam users) than this, SRM asks first. Each game counts once, however many Steam users get it. `0` never asks. The command line never asks.
 
 ### Fetch a store account's games again when they are older than `[Default 6 hours]`
 

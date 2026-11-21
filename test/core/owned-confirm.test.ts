@@ -1,7 +1,7 @@
-// Before a save adds more Store Account shortcuts (games the store accounts
-// own but haven't installed) that Steam doesn't have yet than
+// Before a save adds more games through Store Account shortcuts (games the
+// store accounts own but haven't installed) that Steam doesn't have yet than
 // ownedGames.confirmAbove, the app asks first; the command line says so and
-// goes on.
+// goes on. Each game counts once, however many Steam users get it.
 import {
   afterAll,
   afterEach,
@@ -70,7 +70,7 @@ describe("asking before adding many games that aren't installed", () => {
     expect(confirmOwnedShortcuts(2, NaN)).toBe(false);
   });
 
-  it("counts the Store Account shortcuts being added that aren't in Steam", () => {
+  it("counts the games of the Store Account shortcuts being added that aren't in Steam, each once", () => {
     const app = (fields: Partial<PreviewDataApp>) =>
       ({ status: "add", parserType: "Store Account", ...fields }) as any;
     const data: PreviewData = {
@@ -92,12 +92,27 @@ describe("asking before adding many games that aren't installed", () => {
         },
       },
     };
-    expect(ownedShortcutsToAdd(data)).toBe(2);
+    // (`a` for Alice and Bob is one game)
+    expect(ownedShortcutsToAdd(data)).toBe(1);
     expect(ownedShortcutsToAdd(undefined)).toBe(0);
-    // Saved: in Steam now (only what was added).
+    // Saved: in Steam now, for every user (only what was added).
     ownedShortcutsSaved(data);
     expect(ownedShortcutsToAdd(data)).toBe(0);
+    expect(data.steam["2"].apps.a.notInSteam).toBe(false);
     expect(data.steam["1"].apps.c.notInSteam).toBe(true);
+  });
+
+  it("a game only one Steam user lacks still counts, once", () => {
+    const app = (notInSteam: boolean) =>
+      ({ status: "add", parserType: "Store Account", notInSteam }) as any;
+    const data: PreviewData = {
+      steam: {
+        "1": { username: "alice", excluded: [], apps: { a: app(false) } },
+        "2": { username: "bob", excluded: [], apps: { a: app(true) } },
+        "3": { username: "carol", excluded: [], apps: { a: app(true) } },
+      },
+    };
+    expect(ownedShortcutsToAdd(data)).toBe(1);
   });
 
   describe("the preview says which Store Account shortcuts Steam has", () => {
@@ -130,7 +145,7 @@ describe("asking before adding many games that aren't installed", () => {
     });
     afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
-    it("per Steam user; other parsers' apps carry nothing", async () => {
+    it("per Steam user; other parsers' apps carry nothing; each game counts once", async () => {
       const { result } = await buildPreview([
         parsedConfig(
           steamDir,
@@ -157,7 +172,8 @@ describe("asking before adding many games that aren't installed", () => {
         "Frostpunk: true",
         "Portal: true",
       ]);
-      expect(ownedShortcutsToAdd(result.previewData)).toBe(3);
+      // (Frostpunk for Bob, Portal for both: two games)
+      expect(ownedShortcutsToAdd(result.previewData)).toBe(2);
     });
   });
 
