@@ -4,7 +4,7 @@
 
 By default Steam ROM Manager assumes your UPlay install is located in `C:\Program Files (x86)\Ubisoft`. This field allows you to override that path if your UPlay installation is elsewhere.
 
-SRM reads Ubisoft Connect's configuration cache there (`Ubisoft Game Launcher\cache\configuration\configurations`), or in `%LOCALAPPDATA%\Ubisoft Game Launcher`: it holds the games' titles and executables. Current versions of Ubisoft Connect no longer update that file, so it can be old or missing (see the next option).
+SRM reads Ubisoft Connect's configuration cache (`Ubisoft Game Launcher\cache\configuration\configurations`) in `%LOCALAPPDATA%`, or else in this directory: it holds the games' titles and executables. Current versions of Ubisoft Connect no longer update that file, so it can be old or missing (see the next option).
 
 ## Launch Via UPlay `[Recommend disabled]`
 

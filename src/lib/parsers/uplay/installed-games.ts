@@ -51,10 +51,10 @@ export async function ubisoftGameNames(): Promise<{ [id: string]: string }> {
   return names;
 }
 
-// Ubisoft Connect's configuration cache: the directory override's (by
-// default C:\Program Files (x86)\Ubisoft) or the user's. Current versions of
-// Ubisoft Connect only write an encrypted configurations.vdat next to it, so
-// this file may be old or missing.
+// Ubisoft Connect's configuration cache: the user's (in %LOCALAPPDATA%),
+// else the directory override's (by default C:\Program Files (x86)\Ubisoft).
+// Current versions of Ubisoft Connect only write an encrypted
+// configurations.vdat next to it, so this file may be old or missing.
 export function configurationsFile(
   ubisoftDir: string,
   localAppData = process.env.LOCALAPPDATA ||
