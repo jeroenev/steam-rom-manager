@@ -2,8 +2,8 @@
 // id: an owned game whose id is here is installed, so the Store Account
 // parser leaves it out (the installed game has its own shortcut). Read
 // from the same places SRM's platform parsers read (src/lib/helpers/
-// launchers, and the folders the user's parsers are set to), plus Heroic's
-// lists and the itch Flatpak on Linux.
+// launchers, the EA Desktop parser's own search, and the folders the user's
+// parsers are set to), plus Heroic's lists and the itch Flatpak on Linux.
 //
 // Every reader returns nothing rather than fail: a launcher that isn't
 // there, or a file that can't be read, means no installed games from it.
@@ -12,20 +12,21 @@ import * as fs from "fs-extra";
 import * as os from "os";
 import * as path from "path";
 import * as _ from "lodash";
-import { XMLParser, XMLValidator } from "fast-xml-parser";
-import languageEncoding from "detect-file-encoding-and-language";
-import * as json from "../helpers/json";
 import { SqliteWrapper } from "../helpers/sqlite";
+import { installLocations } from "../helpers/windows/installed-programs";
+import {
+  defaultGamesDirs as defaultEaGamesDirs,
+  gameFolders as eaGameFolders,
+  readInstallerData,
+} from "../parsers/ea-desktop/installed-games";
 import {
   BATTLE_NET_PRODUCT_DB,
   BNET_GAMES,
-  DEFAULT_EA_GAMES_DIR,
   HeroicRunner,
   amazonGamesDb,
   defaultAmazonGamesExe,
   defaultEpicManifestsDir,
   defaultLegendaryInstalledFile,
-  eaInstallerDataFiles,
   epicManifestFiles,
   galaxyPaths,
   heroicConfigDirs,
@@ -70,7 +71,13 @@ export interface InstalledOptions extends InstalledLocations {
   // Windows' list of GOG installs (default: on Windows).
   gogRegistry?: boolean;
   amazonGamesExe?: string;
+  // Where the EA app's games are searched instead of EA's default folders
+  // (as the EA Desktop parser's folder field).
   eaGamesDir?: string;
+  // The folders of the programs Windows lists as installed, where the EA
+  // app's games are found wherever they are (default: Windows' lists, on
+  // Windows).
+  installLocations?: string[];
   battleNetProductDb?: string;
   itchAppDataDir?: string;
 }
@@ -147,13 +154,9 @@ export async function readInstalledGames(
       ];
       break;
     case "ea":
-      sources = fromEach(
-        [
-          options.eaGamesDir ?? (onWindows ? DEFAULT_EA_GAMES_DIR : undefined),
-          ...(options.eaGamesDirs ?? []),
-        ],
-        eaInstalled,
-      );
+      sources = [
+        quietly(async () => eaInstalled(await eaFolders(options, onWindows))),
+      ];
       break;
     case "battlenet":
       sources = [
@@ -295,67 +298,66 @@ export async function amazonInstalled(
     }));
 }
 
-// The EA app's installer data of each game: its content ids (an owned EA
-// game is matched by its content id). The same folders as the EA Desktop
-// parser; when that parser learns to find games through Windows' list of
-// installed programs, this is the one function to move along with it.
-export async function eaInstalled(
-  eaGamesDir: string,
-): Promise<InstalledGame[]> {
-  if (!fs.existsSync(eaGamesDir)) {
-    return [];
+// The folders the EA app installed games in, found as the EA Desktop parser
+// finds them (src/lib/parsers/ea-desktop): on Windows, those in EA's default
+// folders (or `eaGamesDir`) and wherever Windows' installed programs say,
+// except in a Steam library; on any system, those in the folders the user's
+// EA Desktop parsers are set to. Each folder once.
+export async function eaFolders(
+  options: InstalledOptions,
+  onWindows: boolean,
+): Promise<string[]> {
+  const searches: Promise<string[]>[] = [];
+  if (
+    onWindows ||
+    options.eaGamesDir !== undefined ||
+    options.installLocations !== undefined
+  ) {
+    searches.push(
+      eaGameFolders({
+        gamesDir: options.eaGamesDir,
+        installLocations:
+          options.installLocations ??
+          (onWindows ? await installLocations() : []),
+        defaultDirs: onWindows ? defaultEaGamesDirs : [],
+      }),
+    );
   }
-  const xmlParser = new XMLParser();
+  for (const dir of options.eaGamesDirs ?? []) {
+    searches.push(eaGameFolders({ gamesDir: dir, installLocations: [] }));
+  }
+  // (a folder that can't be searched adds nothing)
+  const found = await Promise.all(
+    searches.map((search) => search.catch((): string[] => [])),
+  );
+  // (case-insensitively, as gameFolders and Windows compare them)
+  return _.uniqBy(found.flat(), (folder) => path.resolve(folder).toLowerCase());
+}
+
+// The content ids (and title) of the game in each of `folders`, from its
+// installer data, read as the EA Desktop parser reads it: an owned EA game
+// is matched by any of its content ids. A game counts whether or not its exe
+// is where the installer data says (as in the parser's launcher mode).
+export async function eaInstalled(folders: string[]): Promise<InstalledGame[]> {
   const games: InstalledGame[] = [];
-  for (const file of await eaInstallerDataFiles(eaGamesDir)) {
+  for (const folder of folders) {
     try {
-      const buffer = fs.readFileSync(file);
-      const { encoding } = await languageEncoding(buffer);
-      const xml =
-        encoding == "UTF-16LE" ? buffer.toString("utf16le") : buffer.toString();
-      if (XMLValidator.validate(xml, {}) !== true) {
-        continue;
+      const game = await readInstallerData(folder, { launcherMode: true });
+      if (typeof game === "string") {
+        continue; // (one bad file: that game only)
       }
-      games.push(...eaManifestIds(xmlParser.parse(xml)));
+      games.push(
+        ...game.contentIds.map((id) => ({
+          store: "ea" as StoreKey,
+          id,
+          title: game.title,
+        })),
+      );
     } catch {
       // (one bad file: that game only)
     }
   }
   return games;
-}
-
-// The content ids (and title) in a parsed installerdata.xml, in either of
-// its two shapes (DiPManifest, or game), as the EA Desktop parser reads it.
-export function eaManifestIds(manifest: any): InstalledGame[] {
-  const contentIds = json.caselessGet(
-    manifest,
-    [["DiPManifest", "game"], ["contentIDs"], ["contentID"]],
-    true,
-  );
-  const ids = (Array.isArray(contentIds) ? contentIds : [contentIds])
-    .filter((id) => id !== null && id !== undefined && id !== "")
-    .map(String);
-  let title: any = json.caselessGet(
-    manifest,
-    [["DiPManifest"], ["gameTitles"], ["gameTitle"]],
-    true,
-  );
-  if (!title) {
-    const localeInfo = json.caselessGet(
-      manifest,
-      [["game"], ["metadata"], ["localeInfo"]],
-      true,
-    );
-    title = Array.isArray(localeInfo)
-      ? localeInfo[0]?.title
-      : localeInfo?.title;
-  }
-  title = Array.isArray(title) ? title[0] : title;
-  return ids.map((id) => ({
-    store: "ea" as StoreKey,
-    id,
-    title: title ? String(title) : undefined,
-  }));
 }
 
 // The Battle.net agent's product.db (as the Battle.net parser): the launch

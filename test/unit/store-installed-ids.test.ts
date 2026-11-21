@@ -192,6 +192,78 @@ describe("installed store ids", () => {
     ]);
   });
 
+  it("EA: wherever Windows lists an EA app install (as the EA Desktop parser), not in a Steam library, each folder once", async () => {
+    const manifest = (title: string, contentId: string) =>
+      `<?xml version="1.0" encoding="utf-8"?>
+<DiPManifest version="4.0">
+  <gameTitles><gameTitle locale="en_US">${title}</gameTitle></gameTitles>
+  <contentIDs><contentID>${contentId}</contentID></contentIDs>
+</DiPManifest>`;
+    const folder = (dir: string, title: string, contentId: string) =>
+      path.dirname(
+        path.dirname(
+          write(
+            `${dir}/__Installer/installerdata.xml`,
+            manifest(title, contentId),
+          ),
+        ),
+      );
+    folder("listed/Games/Default/One", "One", "111");
+    const alice = folder(
+      "listed/OriginLibrary/Alice Madness Returns",
+      "Alice",
+      "alice2_dd",
+    );
+    const parserDir = path.join(root, "listed", "Parser");
+    const fromParser = folder("listed/Parser/Two", "Two", "222");
+    const steam = folder(
+      "listed/SteamLibrary/steamapps/common/UnravelTwo",
+      "Unravel Two",
+      "1035049",
+    );
+    const notEA = path.join(root, "listed", "Not EA");
+    fs.mkdirSync(notEA, { recursive: true });
+    const games = await installed.readInstalledGames("ea", {
+      ...nowhere,
+      osType: "Windows_NT",
+      eaGamesDir: path.join(root, "listed", "Games", "Default"),
+      installLocations: [
+        alice + path.sep,
+        alice.toUpperCase(),
+        fromParser,
+        steam,
+        notEA,
+        path.join(root, "listed", "Missing"),
+      ],
+      eaGamesDirs: [parserDir],
+    });
+    expect(games.sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      { store: "ea", id: "111", title: "One" },
+      { store: "ea", id: "222", title: "Two" },
+      { store: "ea", id: "alice2_dd", title: "Alice" },
+    ]);
+  });
+
+  it("EA: elsewhere than Windows, only where a parser points", async () => {
+    const parserDir = path.dirname(
+      path.dirname(
+        path.dirname(
+          write(
+            "linux-ea/Games/Three/__Installer/installerdata.xml",
+            `<DiPManifest><gameTitles><gameTitle>Three</gameTitle></gameTitles><contentIDs><contentID>333</contentID></contentIDs></DiPManifest>`,
+          ),
+        ),
+      ),
+    );
+    expect(await installed.readInstalledGames("ea", nowhere)).toEqual([]);
+    expect(
+      await installed.readInstalledGames("ea", {
+        ...nowhere,
+        eaGamesDirs: [parserDir],
+      }),
+    ).toEqual([{ store: "ea", id: "333", title: "Three" }]);
+  });
+
   it("Battle.net: SRM's launch code for known products, the product's own otherwise", () => {
     expect(
       installed.battleNetProductIds([
