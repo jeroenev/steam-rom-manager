@@ -66,7 +66,7 @@ For the Store Account parsers, which add the games your store accounts own but h
 
 ### A game several store accounts own `[Recommend One shortcut, from the first store]`
 
-When the Store Account parsers of several stores list the same game (the same title), SRM adds one shortcut, from the store that comes first in the store order. Or it adds a shortcut from every store.
+When the Store Account parsers of several stores list the same game (the same title), SRM adds one shortcut, from the store that comes first in the store order. Or it adds a shortcut from every store. (Two stores whose shortcuts run the same program, such as the browser, give a title the same Steam shortcut: only the first store's is added, unless each parser has a title modifier. See the Store Account parser's help.)
 
 ### Store order
 

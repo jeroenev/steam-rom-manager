@@ -29,6 +29,7 @@ import {
   MultiStoreSettings,
   OwnedEntry,
   arrangeOwned,
+  storeRank,
 } from "../lib/stores/arrange";
 import { isStoreKey } from "../lib/stores/types";
 
@@ -68,7 +69,8 @@ const accountKey = (steamDirectory: string, accountID: string) =>
 // wasn't known; or one installed from another store whose launcher-mode
 // parser uses the same program, PowerShell for Epic and EA), and would
 // otherwise replace it or put it in "Not installed". Two Store Account
-// parsers with the same game: the first one's.
+// parsers with the same app id: ownedInOtherStores settles it by the store
+// order when their stores differ; for one store's, the first one's.
 export function otherParsersAppIds(
   configs: readonly ParsedUserConfiguration[],
 ): Map<string, Set<string>> {
@@ -93,12 +95,16 @@ export function otherParsersAppIds(
 }
 
 // The Store Account files left out because the Store Account parser of
-// another store has the same game (by normalizeTitle of the extracted
-// title) for the same Steam directory and user account, and that store
-// comes first in the store order: per Steam directory and user account (see
-// arrangeOwned; none with multiStore "all"). Files the guard above leaves
-// out (`takenByOthers`) don't count: they aren't added. Other parsers'
-// files are no part of this.
+// another store has the same game for the same Steam directory and user
+// account, and that store comes first in the store order: per Steam
+// directory and user account. The same game is the same normalizeTitle of
+// the extracted title (see arrangeOwned; never with multiStore "all"), or,
+// in either mode, the same app id: stores whose shortcuts run the same
+// program (the browser opener, PowerShell for Epic and EA) give the same
+// title one Steam shortcut, which goes to the store that comes first, not to
+// the parser that comes first. Files the guard above leaves out
+// (`takenByOthers`) don't count: they aren't added. Other parsers' files are
+// no part of this.
 export function ownedInOtherStores(
   configs: readonly ParsedUserConfiguration[],
   settings: MultiStoreSettings,
@@ -130,10 +136,25 @@ export function ownedInOtherStores(
     }
   }
   const leftOut = new Map<string, Set<ParsedUserConfigurationFile>>();
+  const rank = (entry: Entry) => storeRank(entry.store, settings.storeOrder);
   for (const [key, list] of entries) {
-    const { otherStore } = arrangeOwned(list, settings);
-    if (otherStore.length > 0) {
-      leftOut.set(key, new Set(otherStore.map((entry) => entry.file)));
+    const { kept, otherStore } = arrangeOwned(list, settings);
+    // One shortcut per app id: the best-ranked store's. (One store's
+    // entries with the same app id stay: the first one is added.)
+    const best = new Map<string, number>();
+    for (const entry of kept) {
+      const appId = appIdOf(STORE_ACCOUNT, entry.file);
+      const known = best.get(appId);
+      if (known === undefined || rank(entry) < known) {
+        best.set(appId, rank(entry));
+      }
+    }
+    const sameShortcut = kept.filter(
+      (entry) => rank(entry) > best.get(appIdOf(STORE_ACCOUNT, entry.file))!,
+    );
+    const files = [...otherStore, ...sameShortcut].map((entry) => entry.file);
+    if (files.length > 0) {
+      leftOut.set(key, new Set(files));
     }
   }
   return leftOut;

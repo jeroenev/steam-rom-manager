@@ -137,6 +137,72 @@ describe("a game the Store Account parsers of several stores list", () => {
     expect(logged.join("\n")).not.toContain("another of your store accounts");
   });
 
+  // Stores whose shortcuts run the same program (here both open the browser:
+  // GOG without Galaxy, and Humble).
+  const OPENER = "C:\\WINDOWS\\explorer.exe";
+  const inBrowser = (store: StoreKey, title: string) =>
+    file(OPENER, title, `https://${store}.example/${title}`, ["Not installed"]);
+
+  it('"all": one shortcut where two stores run the same program, from the store that comes first', async () => {
+    // (GOG's parser comes first in the list; Humble first in the order)
+    const configs = [
+      owned("gog", [inBrowser("gog", "FTL")]),
+      owned("humble", [
+        inBrowser("humble", "FTL"),
+        inBrowser("humble", "Braid"),
+      ]),
+    ];
+    const { apps, logged } = await preview(
+      configs,
+      settings({ multiStore: "all", storeOrder: ["humble", "gog"] }),
+    );
+    expect(apps(ALICE.accountID)).toEqual([
+      "Braid (owned-humble)",
+      "FTL (owned-humble)",
+    ]);
+    expect(logged.join("\n")).toContain(
+      "Left out 1 Store Account shortcut(s) for games another of your store accounts also owns",
+    );
+    // (the other way round, GOG's)
+    const gogFirst = await preview(
+      configs,
+      settings({ multiStore: "all", storeOrder: ["gog", "humble"] }),
+    );
+    expect(gogFirst.apps(ALICE.accountID)).toEqual([
+      "Braid (owned-humble)",
+      "FTL (owned-gog)",
+    ]);
+  });
+
+  it('"preferred": titles told apart before the title modifiers but the same after are one shortcut too', async () => {
+    // "Prey (2017)" and "Prey" are different games to arrangeOwned, but end
+    // up with the same final title (fuzzy matching), so the same app id.
+    const prey2017 = inBrowser("gog", "Prey");
+    prey2017.titles.extracted = "Prey (2017)";
+    const configs = [
+      owned("gog", [prey2017]),
+      owned("humble", [inBrowser("humble", "Prey")]),
+    ];
+    const { apps } = await preview(
+      configs,
+      settings({ storeOrder: ["humble", "gog"] }),
+    );
+    expect(apps(ALICE.accountID)).toEqual(["Prey (owned-humble)"]);
+  });
+
+  it("one store's two entries with the same app id are no other store's", () => {
+    const leftOut = ownedInOtherStores(
+      [
+        owned("humble", [
+          inBrowser("humble", "FTL"),
+          inBrowser("humble", "FTL"),
+        ]),
+      ],
+      { multiStore: "all", storeOrder: ["humble"] },
+    );
+    expect(leftOut.size).toBe(0);
+  });
+
   it("decides per Steam user: another user's shortcuts are their own", async () => {
     // (GOG's parser is only for Alice)
     const { apps } = await preview([gog(), epic([ALICE, BOB])]);

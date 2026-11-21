@@ -28,6 +28,8 @@ When the Store Account parsers of two stores list the same game (the same title,
 
 Change the order, or have a shortcut from every store, in **Settings**, **Owned Games**. Those shortcuts have the same title; to tell them apart, give each parser a title modifier (for example `${title} (GOG)`). A title is part of a shortcut's id in Steam, so changing it makes a new shortcut.
 
+A shortcut's id is made from its program and its title, so where two stores' shortcuts run the same program, the same title is the same Steam shortcut: the browser runs those of Humble Bundle, of itch.io without the itch app, and of any store whose launcher isn't installed; PowerShell runs those of the Epic Games Store and the EA app. Then only the shortcut of the store that comes first in the store order is added, also with a shortcut from every store, and the log counts the others. A title modifier per parser keeps them apart.
+
 This is only between Store Account parsers: a game installed through any launcher is left out by the parser itself (see its settings), and the shortcut of another parser is never left out.
 
 ## Settings
