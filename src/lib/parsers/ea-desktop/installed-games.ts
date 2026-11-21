@@ -9,6 +9,7 @@ import * as json from "../../helpers/json";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import languageEncoding from "detect-file-encoding-and-language";
 import { eaWaitForExitWrapper } from "../../launch-wrapper/launchers";
+import { inSteamLibrary } from "../../helpers/steam/in-steam-library";
 
 // Where the EA app installs games unless told otherwise. Searched when the
 // parser's folder field is empty; the older default first, so games SRM
@@ -76,12 +77,6 @@ export async function gameFolders({
     seen.add(key);
     return true;
   });
-}
-
-// An EA game bought on Steam has installer data too, and Windows lists it
-// (Steam's "Steam App <id>" entries). Steam already lists those games.
-function inSteamLibrary(location: string) {
-  return /(^|[\\/])steamapps[\\/]+common([\\/]|$)/i.test(location);
 }
 
 function installDataFile(gameDir: string) {

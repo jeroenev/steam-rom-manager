@@ -4,11 +4,15 @@
 
 By default Steam ROM Manager assumes your UPlay install is located in `C:\Program Files (x86)\Ubisoft`. This field allows you to override that path if your UPlay installation is elsewhere.
 
+SRM reads Ubisoft Connect's configuration cache there (`Ubisoft Game Launcher\cache\configuration\configurations`), or in `%LOCALAPPDATA%\Ubisoft Game Launcher`: it holds the games' titles and executables. Current versions of Ubisoft Connect no longer update that file, so it can be old or missing (see the next option).
+
 ## Launch Via UPlay `[Recommend disabled]`
 
 What it sounds like, this toggle let's you set whether games will launch via UPlay or directly from the game's executable.
 
 For UPlay this doesn't matter too much as UPlay games will automatically launch UPlay in the background even when launched from the executable. When `Launch via UPlay` is disabled, both the Steam and Ubisoft overlays work if Ubisoft Connect is already running. If it isn't, the game starts Ubisoft Connect itself, and the Steam overlay can fail (with Far Cry 3 it flashed and disappeared). When `Launch via UPlay` is enabled, the Steam overlay only works when Steam started Ubisoft Connect, that is when Ubisoft Connect was closed before the launch; an open Ubisoft Connect takes the game over without the Steam overlay. Enable **Wait for the game to exit** as well, or Steam shows the game as running until you quit a Ubisoft Connect that it started. To have Steam start Ubisoft Connect, so the game can get the Steam overlay, use `Launch via UPlay` with **Wait for the game to exit**, and the restart option below if Ubisoft Connect may already be open.
+
+This option also decides which games SRM adds. With it enabled, SRM adds every game Ubisoft Connect lists as installed (in the registry) whose folder exists, since the link only needs the game's id. Its title comes from the configuration cache, or else from Windows' list of installed programs, or else from its folder's name. Games installed through Steam (in a Steam library) are left out: Steam lists them already. With it disabled, SRM only adds the games whose executable the configuration cache names by its place in the game's folder. That leaves out games installed since Ubisoft Connect stopped updating the cache, and games whose executable Ubisoft Connect looks up in the registry (Far Cry 3, for example).
 
 ## Wait For Game To Exit `[Windows only]`
 
