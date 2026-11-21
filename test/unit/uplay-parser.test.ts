@@ -330,7 +330,7 @@ describe("games", () => {
     filePath: "D:\\UplayLibrary\\Assassin's Creed IV Black Flag\\AC4BFSP.exe",
   };
 
-  it("launcher mode lists every game Ubisoft Connect installed, named by the cache, else Windows' list, else its folder", () => {
+  it("launcher mode lists every game Ubisoft Connect installed itself, named by the cache, else Windows' list", () => {
     expect(
       ubisoftGames({
         installs,
@@ -354,13 +354,29 @@ describe("games", () => {
         launchOptions: launchOptions("46"),
         filePath: "D:\\UplayLibrary\\Far Cry 3",
       },
-      {
-        extractedTitle: "Anno 1800",
-        extractedAppId: "1771",
-        launchOptions: launchOptions("1771"),
-        filePath: "D:\\UplayLibrary\\Anno 1800",
-      },
+      // (not Anno 1800: no "Uplay Install" entry, so Ubisoft Connect didn't
+      // install it itself)
     ]);
+  });
+
+  it("launcher mode leaves out a game without a 'Uplay Install' entry, even one the cache knows (it knows every game the account has seen)", () => {
+    expect(
+      ubisoftGames({
+        installs,
+        configurations: [
+          ...cached,
+          {
+            launcherId: 1771,
+            title: "Anno 1800",
+            relativeExe: undefined,
+            thirdPartyPlatform: false,
+          },
+        ],
+        names,
+        launcherMode: true,
+        exists,
+      }).map((game) => game.extractedAppId),
+    ).toEqual(["273", "420", "46"]);
   });
 
   it("without the cache, launcher mode still lists them", () => {
@@ -377,13 +393,10 @@ describe("games", () => {
         "Assassin's Creed IV Black Flag",
         "D:\\UplayLibrary\\Assassin's Creed IV Black Flag",
       ],
-      [
-        "Assassin's Creed Origins",
-        "D:\\UplayLibrary\\Assassin's Creed Origins",
-      ],
       ["Far Cry 4", "D:\\UplayLibrary\\Far Cry 4"],
       ["Far Cry® 3", "D:\\UplayLibrary\\Far Cry 3"],
-      ["Anno 1800", "D:\\UplayLibrary\\Anno 1800"],
+      // (not Assassin's Creed Origins or Anno 1800: no "Uplay Install"
+      // entry, e.g. installed for another store)
     ]);
   });
 
@@ -410,7 +423,7 @@ describe("games", () => {
       exists,
     });
     expect(games.map((game) => game.launchWrapper)).toEqual(
-      ["273", "420", "46", "1771"].map((id) =>
+      ["273", "420", "46"].map((id) =>
         ubisoftWaitForExitWrapper(
           id,
           installs.find((install) => install.id === id).installDir,

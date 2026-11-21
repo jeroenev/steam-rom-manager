@@ -189,12 +189,14 @@ function convertLaunchId(hexArr: number[]) {
 // The games to list:
 // - In exe mode, those whose configuration in the cache names their exe
 //   relative to their folder (and that Ubisoft Connect lists as installed).
-// - In launcher mode, every game Ubisoft Connect lists as installed whose
-//   folder exists, except those in a Steam library or that the cache knows
-//   as another store's: uplay:// links only need the game's id. A game
-//   keeps the title and exe it gets in exe mode (and so its app id); others
-//   are named by the cache, Windows' installed-programs lists (`names`) or
-//   their folder, and their exe is their folder.
+// - In launcher mode (uplay:// links only need the game's id), the games
+//   exe mode lists, plus every game Ubisoft Connect installed itself: those
+//   in its Installs key that also have a "Uplay Install <id>" entry in
+//   Windows' installed-programs lists (`names`), as BoilR lists them. Not
+//   those whose folder is gone, in a Steam library, or that the cache knows
+//   only as another store's. A game keeps the title and exe it gets in exe
+//   mode (and so its app id); others are named by the cache, else by that
+//   entry, and their exe is their folder.
 // With `waitForExit` (launcher mode, Windows), a game's shortcut runs SRM's
 // launch script, which waits for the game (see ubisoftWaitForExitWrapper).
 export function ubisoftGames({
@@ -272,10 +274,14 @@ export function ubisoftGames({
       );
       continue;
     }
+    // (only a game Ubisoft Connect installed itself, which gets a "Uplay
+    // Install <id>" entry: one it only registered for another store (an
+    // Epic install, say) has none, and that store lists it. A configuration
+    // in the cache doesn't tell: the cache has every game the account has
+    // seen, wherever it was bought.)
+    if (!names[id]) continue;
     const named = own.find((config) => ofGame(config) && config.title);
-    const title =
-      (named && named.title) || names[id] || path.win32.basename(folder) || id;
-    add(id, title, folder, installDir);
+    add(id, (named && named.title) || names[id], folder, installDir);
   }
   return games;
 }
