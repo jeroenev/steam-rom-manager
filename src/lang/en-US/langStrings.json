@@ -360,7 +360,7 @@
     }
   },
   "eaDesktopParser": {
-    "eaGamesDirTitle": "EA Games Directory Override",
+    "eaGamesDirTitle": "Extra EA Games Directory",
     "eaGamesDirPlaceholder": {
       "Windows_NT": "C:\\path\\to\\EA Games\\",
       "Darwin": "/path/to/EA Games/",
