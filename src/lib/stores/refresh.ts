@@ -475,6 +475,26 @@ function signedIn(store: StoreKey) {
   }
 }
 
+// The last refresh of `store`, when it failed (it's cleared by one that
+// works): what it said, and whether the store refused the saved login.
+// The parser then used the cached library, if there was one.
+export function lastRefreshFailure(
+  store: StoreKey,
+): { at: number; message: string; needsSignIn: boolean } | null {
+  try {
+    const failure = storage.loadFailure(store);
+    return failure
+      ? {
+          at: failure.at,
+          message: failure.message,
+          needsSignIn: !!failure.needsSignIn,
+        }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 // The cached library, or null when there is none or it can't be read (a
 // damaged file is replaced by the next refresh instead of breaking the
 // account).

@@ -31,7 +31,8 @@ import {
   arrangeOwned,
   storeRank,
 } from "../lib/stores/arrange";
-import { isStoreKey } from "../lib/stores/types";
+import { STORE_NAMES, StoreKey, isStoreKey } from "../lib/stores/types";
+import { cachedLibrary, lastRefreshFailure } from "../lib/stores/refresh";
 
 export interface BuildResult {
   // Absent when the parsers produced nothing to add.
@@ -225,6 +226,7 @@ export class PreviewBuilder {
       reuse && !parserIds
         ? await this.parsers.executeFileParserReusing(...chosen)
         : await this.parsers.executeFileParser(...chosen);
+    this.logStaleLibraries(data.parsedData.parsedConfigs);
     const ran = data.parsedData.parsedConfigs.length;
     if (reuse && data.reparsed < ran) {
       this.loggerService.info(
@@ -302,6 +304,36 @@ export class PreviewBuilder {
       onlineImages: pools,
       sgdbToArt: artworkCache.sgdbToArt,
     };
+  }
+
+  // The Store Account parsers whose store's last refresh failed used the
+  // games fetched before: one line per store says so, and why, in SRM's own
+  // log (the app's event log, and the command line's), also when the parse
+  // cache reused their result. (A store module's own log goes to the
+  // diagnostics file only.)
+  private logStaleLibraries(configs: readonly ParsedUserConfiguration[]) {
+    const stores = _.uniq(
+      configs
+        .filter((c) => c.parserType === STORE_ACCOUNT && isStoreKey(c.store))
+        .map((c) => c.store as StoreKey),
+    );
+    for (const store of stores) {
+      const failure = lastRefreshFailure(store);
+      const library = failure ? cachedLibrary(store) : null;
+      if (!failure || !library) {
+        continue;
+      }
+      const values = {
+        store: STORE_NAMES[store],
+        date: new Date(library.fetchedAt).toLocaleString(),
+        error: failure.message,
+      };
+      this.loggerService.info(
+        failure.needsSignIn
+          ? this.lang.info.ownedLibraryNeedsSignIn__i.interpolate(values)
+          : this.lang.info.ownedLibraryStale__i.interpolate(values),
+      );
+    }
   }
 
   private async createPreviewData(

@@ -142,6 +142,8 @@
         "reusedParsers__i": "Parsed ${parsed} of ${total} parsers again; the others hadn't changed since the last list.",
         "ownedDuplicates__i": "Left out ${count} Store Account shortcut(s) that another parser already adds (same program and title).",
         "ownedInOtherStores__i": "Left out ${count} Store Account shortcut(s) for games another of your store accounts also owns: that store comes first in the store order (Settings, Owned Games).",
+        "ownedLibraryStale__i": "${store}: using the games fetched on ${date}; the last refresh failed: ${error}",
+        "ownedLibraryNeedsSignIn__i": "${store}: the saved sign-in no longer works, so the games fetched on ${date} are used. Sign in again in the Store Account parser's settings.",
         "shutdownSteam": "If Steam is running, exit Steam.",
         "noParserConfigurations": "Please create parser in \"Parsers\" menu first.",
         "parserFoundNoFiles": "Parser(s) found no files matching user configuration.",

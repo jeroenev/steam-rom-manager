@@ -29,6 +29,7 @@ export {
   forgetUnfinishedLogin,
   isAccountChanged,
   isStale,
+  lastRefreshFailure,
   libraryMaxAgeMs,
   onStoresChanged,
   pendingLogin,
