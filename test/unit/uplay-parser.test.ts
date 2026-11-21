@@ -421,6 +421,7 @@ describe("games", () => {
     expect(games[2].launchWrapper.game).toEqual({
       folder: "D:\\UplayLibrary\\Far Cry 3",
       startTimeoutMinutes: 10,
+      handOff: ["UbisoftGameLauncher"],
     });
   });
 });
@@ -536,8 +537,13 @@ describe("UPlay: wait for the game to exit", () => {
     ).toEqual({
       launch: { file: "uplay://launch/46/0" },
       // (by folder only: Far Cry 3's game is farcry3_d3d11.exe, not the
-      // executable its configuration names)
-      game: { folder, startTimeoutMinutes: 10 },
+      // executable its configuration names; its first program hands the
+      // game's start to Ubisoft Connect's UbisoftGameLauncher)
+      game: {
+        folder,
+        startTimeoutMinutes: 10,
+        handOff: ["UbisoftGameLauncher"],
+      },
       preLaunch: [
         {
           script: parserScript("ubisoft-connect-start.ps1"),

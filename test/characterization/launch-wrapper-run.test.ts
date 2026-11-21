@@ -242,40 +242,50 @@ describe("launch script", () => {
   // A game found by its folder (as the EA app's, Ubisoft Connect's and Epic's
   // wrappers find theirs), started by a "launcher" (a .cmd file) as copies of
   // ping.exe in that folder. Its post-launch and post-exit steps note how many
-  // of the game's programs ran then.
+  // of the game's programs ran then. `launcher` gets the game's exe and makes
+  // other programs (copies of ping.exe outside the game's folder).
   async function runFolderGame(
     shortAppId: string,
     title: string,
     exeName: string,
     startTimeoutMinutes: number,
-    launcher: (gameExe: string) => string,
+    launcher: (gameExe: string, otherExe: (name: string) => string) => string,
+    handOff?: string[],
   ) {
     const root = tempDir("launch-folder");
     const order = path.join(root, "order.txt");
+    const ping = path.join(
+      process.env.SystemRoot || "C:\\Windows",
+      "System32",
+      "PING.EXE",
+    );
     const gameFolder = path.join(root, "Game");
     fs.mkdirSync(gameFolder);
     const gameExe = path.join(gameFolder, `${exeName}.exe`);
-    fs.copyFileSync(
-      path.join(
-        process.env.SystemRoot || "C:\\Windows",
-        "System32",
-        "PING.EXE",
-      ),
-      gameExe,
-    );
+    fs.copyFileSync(ping, gameExe);
+    const otherExe = (name: string) => {
+      const exe = path.join(root, "Launcher", `${name}.exe`);
+      fs.mkdirSync(path.dirname(exe), { recursive: true });
+      fs.copyFileSync(ping, exe);
+      return exe;
+    };
     const step = path.join(root, "step.ps1");
     fs.writeFileSync(
       step,
       `Add-Content '${order}' "$env:SRM_STAGE $(@(Get-Process ${exeName} -ErrorAction SilentlyContinue).Count)"\r\n`,
     );
     const launch = path.join(root, "launch.cmd");
-    fs.writeFileSync(launch, launcher(gameExe));
+    fs.writeFileSync(launch, launcher(gameExe, otherExe));
     await installLaunchScripts();
     await writeWrapperFile("11111111", shortAppId, {
       title,
       wrapper: makeLaunchWrapper('"C:\\unused.exe"', undefined, {
         launch: { file: launch },
-        game: { folder: gameFolder, startTimeoutMinutes },
+        game: {
+          folder: gameFolder,
+          startTimeoutMinutes,
+          ...(handOff && { handOff }),
+        },
         postLaunch: [{ script: step }],
         postExit: [{ script: step }],
       }),
@@ -309,30 +319,70 @@ describe("launch script", () => {
     };
   }
 
-  // (seen on Far Cry 3: its first program hands the game to Ubisoft Connect
-  // and exits within a second; Ubisoft Connect then stalled on a download
-  // and never started the game. Counted as started, the launcher would have
-  // been closed under the user.)
+  // (seen on Far Cry 3: its first program starts Ubisoft Connect's
+  // UbisoftGameLauncher.exe and exits within a second; Ubisoft Connect then
+  // stalled on a download and never started the game. Counted as started,
+  // the launcher would have been closed under the user.)
   it.runIf(windows)(
-    "a game whose program is gone again before its start-up settles hasn't started",
+    "a game that hands its start to its launcher hasn't started while the launcher's program runs",
     async () => {
       const { seconds, steps, log } = await runFolderGame(
         "125",
-        "Flash Game",
-        "srmtestflashgame",
+        "Handed-Off Game",
+        "srmtesthandedoffgame",
         // (9 seconds)
         0.15,
-        // (runs about 2 seconds: always seen, gone before the 3 second check)
-        (gameExe) =>
-          `@echo off\r\nstart "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n`,
+        // (the game runs about 2 seconds: always seen, gone before the 3
+        // second check; the launcher's program about 15)
+        (gameExe, otherExe) =>
+          `@echo off\r\nstart "" /b "${otherExe("srmtesthandoff")}" -n 16 127.0.0.1 >nul\r\n` +
+          `start "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n`,
+        ["srmtesthandoff"],
       );
-      expect(log).toContain("the game closed again during start-up");
+      expect(log).toContain("the game handed its start to its launcher");
+      expect(log).not.toContain("the game closed again during start-up");
       expect(log).toContain(
         "the game didn't start; skipping post-launch scripts",
       );
       expect(log).not.toContain("game started");
       expect(steps).toEqual(["post-exit 0"]);
       expect(seconds).toBeLessThan(60);
+    },
+    120000,
+  );
+
+  // (a crash, or an error exit: the launcher is closed after it, as after
+  // any game. With or without a hand-off program the parser names: none
+  // runs.)
+  it.runIf(windows).each<[string, string, string[] | undefined]>([
+    ["129", "Crashing Game", undefined],
+    ["130", "Crashing Ubisoft Game", ["srmtestnohandoff"]],
+  ])(
+    "a game that closes again at once ran and exited (%s, %s)",
+    async (shortAppId, title, handOff) => {
+      const { steps, log } = await runFolderGame(
+        shortAppId,
+        title,
+        "srmtestcrashinggame",
+        // (9 seconds: the wait for the game to come back ends there)
+        0.15,
+        // (about 2 seconds: always seen, gone before the 3 second check)
+        (gameExe) =>
+          `@echo off\r\nstart "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n`,
+        handOff,
+      );
+      const at = (text: string) => log.indexOf(text);
+      expect(at("the game closed again during start-up")).toBeGreaterThan(-1);
+      expect(
+        at("the game didn't come back: it ran and exited"),
+      ).toBeGreaterThan(at("the game closed again during start-up"));
+      expect(at("game started")).toBeGreaterThan(
+        at("the game didn't come back"),
+      );
+      expect(log).toContain("game exited");
+      expect(log).not.toContain("handed its start");
+      expect(log).not.toContain("the game didn't start");
+      expect(steps).toEqual(["post-launch 0", "post-exit 0"]);
     },
     120000,
   );
@@ -345,14 +395,18 @@ describe("launch script", () => {
         "Restarting Game",
         "srmtestrestartgame",
         0.5,
-        // (about 2 seconds, a 5 second pause, then about 10 seconds)
+        // (about 2 seconds, gone for about 6 (longer than the 3 second
+        // check, which comes at most about 5.5 seconds in), then about 10)
         (gameExe) =>
           `@echo off\r\nstart "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n` +
-          `ping -n 6 127.0.0.1 >nul\r\n` +
+          `ping -n 9 127.0.0.1 >nul\r\n` +
           `start "" /b "${gameExe}" -n 11 127.0.0.1 >nul\r\n`,
       );
-      expect(log).toContain("game started");
+      const gone = log.indexOf("the game closed again during start-up");
+      expect(gone).toBeGreaterThan(-1);
+      expect(gone).toBeLessThan(log.indexOf("game started"));
       expect(log).toContain("game exited");
+      expect(log).not.toContain("the game didn't come back");
       expect(log).not.toContain("the game didn't start");
       expect(steps).toEqual(["post-launch 1", "post-exit 0"]);
     },

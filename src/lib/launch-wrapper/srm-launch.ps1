@@ -155,6 +155,16 @@ function Get-GameProcesses {
     Return @($script:tracked.Keys | Where-Object { $alive.ContainsKey($_) })
 }
 
+# Whether a program of this session runs that the parser names as the
+# launcher taking the game's start over (game.handOff, names without .exe:
+# Ubisoft Connect's UbisoftGameLauncher, which a game's first program can
+# start before it exits).
+function Test-HandOff {
+    $names = @($Config.game.handOff | Where-Object { $_ } | ForEach-Object { [string]$_ })
+    If (!$names.Count) { Return $False }
+    Return [bool]@(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $script:session }).Count
+}
+
 # Waits until no game process is left (and none comes back for a few
 # seconds: some games restart themselves).
 function Wait-GameExit {
@@ -192,30 +202,49 @@ Try {
         # The launcher was started and starts the game: wait for it (3
         # minutes at most, or what the parser sets: a launcher may update the
         # game or ask to sign in first) and for its start-up to settle: the
-        # same programs 3 seconds apart (2 minutes at most). One that is gone
-        # again by then hasn't started: a game's first program may only hand
-        # it to the launcher, which then may still update or stall, so wait
-        # on. (A game that crashes at once is therefore waited for until the
-        # time is up.)
+        # same programs 3 seconds apart (2 minutes at most, and not past that
+        # time). A game that is gone again by then may come back (some
+        # restart themselves); if it doesn't, it ran and exited (it crashed,
+        # or quit at once), and the launcher is closed as after any game.
+        # But while a program runs that the parser names as its launcher
+        # taking the game's start over (handOff), the game's first program
+        # only handed the game to the launcher, which may still update it or
+        # stall: the game hasn't started, so wait on for it.
         $minutes = 3
         If ($Config.game.startTimeoutMinutes -gt 0) { $minutes = [double]$Config.game.startTimeoutMinutes }
         $timeout = (Get-Date).AddMinutes($minutes)
-        $goneAgain = $False
+        $goneLogged = $False
+        $handOffLogged = $False
         While (!$running -and (Get-Date) -lt $timeout) {
             If (!@(Get-GameProcesses).Count) {
                 Start-Sleep -Seconds 1
                 Continue
             }
             $settleUntil = (Get-Date).AddMinutes(2)
+            If ($settleUntil -gt $timeout) { $settleUntil = $timeout }
+            $handedOff = $False
             Do {
                 $before = (@(Get-GameProcesses) | Sort-Object) -join ","
                 Start-Sleep -Seconds 3
                 $after = (@(Get-GameProcesses) | Sort-Object) -join ","
-            } Until (!$after -or $before -eq $after -or (Get-Date) -gt $settleUntil)
-            $running = [bool]$after
-            If (!$running -and !$goneAgain) {
-                $goneAgain = $True
-                Write-Log "the game closed again during start-up (its launcher may still update it); waiting for it to start"
+                If (!$after -and (Test-HandOff)) {
+                    # (only when it still runs a moment later: it can outlive
+                    # a game that ended by half a second)
+                    Start-Sleep -Seconds 2
+                    $after = (@(Get-GameProcesses) | Sort-Object) -join ","
+                    $handedOff = !$after -and (Test-HandOff)
+                }
+                If (!$after -and !$handedOff -and !$goneLogged) {
+                    $goneLogged = $True
+                    Write-Log "the game closed again during start-up; waiting for it to come back (2 minutes at most)"
+                }
+            } Until (($after -and $before -eq $after) -or $handedOff -or (Get-Date) -gt $settleUntil)
+            $running = !$handedOff
+            If ($handedOff -and !$handOffLogged) {
+                $handOffLogged = $True
+                Write-Log "the game handed its start to its launcher (which may still update it); waiting for it to start"
+            } ElseIf (!$after) {
+                Write-Log "the game didn't come back: it ran and exited"
             }
         }
     } Else {

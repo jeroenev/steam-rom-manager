@@ -71,7 +71,10 @@ export function eaWaitForExitWrapper(
 // A Ubisoft Connect game, by its id and install folder (from the registry,
 // which may use forward slashes). The game's process can differ from the
 // executable its configuration names (Far Cry 3 runs farcry3_d3d11.exe), so
-// the game is found by its folder only.
+// the game is found by its folder only. A game's first program may hand the
+// game's start to Ubisoft Connect and exit (Far Cry 3's starts
+// UbisoftGameLauncher.exe, which stays while Ubisoft Connect updates the
+// game or stalls): the game hasn't started then.
 export function ubisoftWaitForExitWrapper(
   gameId: string,
   installDir: string,
@@ -82,7 +85,7 @@ export function ubisoftWaitForExitWrapper(
   const start = parserScript("ubisoft-connect-start.ps1");
   return {
     launch: { file: `uplay://launch/${gameId}/0` },
-    game: { folder, startTimeoutMinutes },
+    game: { folder, startTimeoutMinutes, handOff: ["UbisoftGameLauncher"] },
     preLaunch: [
       {
         script: start,
