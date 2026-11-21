@@ -187,15 +187,6 @@ export async function readInstalledGames(
   return (await Promise.all(sources)).flat();
 }
 
-// The ids of the installed games of `store`.
-export async function installedIds(
-  store: StoreKey,
-  options: InstalledOptions = {},
-): Promise<Set<string>> {
-  const games = await readInstalledGames(store, options);
-  return new Set(games.map((game) => game.id));
-}
-
 async function quietly(
   read: () => InstalledGame[] | Promise<InstalledGame[]>,
 ): Promise<InstalledGame[]> {

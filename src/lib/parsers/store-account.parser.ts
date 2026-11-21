@@ -203,7 +203,9 @@ function storeIds(game: OwnedGame): string[] {
   return game.store === "battlenet" ? ids.map((id) => id.toLowerCase()) : ids;
 }
 
-function installedIds(store: StoreKey, games: InstalledGame[]): Set<string> {
+// The ids of the installed `games` of `store`, as storeIds gives an owned
+// game's (the matching rule lives here, with storeIds).
+function sameStoreIdSet(store: StoreKey, games: InstalledGame[]): Set<string> {
   return new Set(
     games.map((game) =>
       store === "battlenet" ? game.id.toLowerCase() : game.id,
@@ -379,7 +381,7 @@ export class StoreAccountParser implements GenericParser {
     const games = gamesToAdd(
       library.games,
       {
-        sameStoreIds: installedIds(store, sameStore),
+        sameStoreIds: sameStoreIdSet(store, sameStore),
         sameStoreTitles,
         titles,
       },

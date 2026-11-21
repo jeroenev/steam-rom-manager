@@ -292,12 +292,6 @@ describe("installed store ids", () => {
       itchAppDataDir: path.join(root, "itch"),
     });
     expect(games).toEqual([{ store: "itch", id: "284880", title: "Pikuniku" }]);
-    expect(
-      await installed.installedIds("itch", {
-        ...nowhere,
-        itchAppDataDir: path.join(root, "itch"),
-      }),
-    ).toEqual(new Set(["284880"]));
   });
 
   it("itch: the Flatpak's database too, on Linux", async () => {
