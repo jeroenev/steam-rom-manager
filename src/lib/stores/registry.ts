@@ -2,6 +2,7 @@
 // import and one line here; until then its account shows as "not yet".
 
 import { amazonClient } from "./amazon";
+import { eaClient } from "./ea";
 import { epicClient } from "./epic";
 import { gogClient } from "./gog";
 import { itchClient } from "./itch";
@@ -25,4 +26,5 @@ export function storeClient(store: StoreKey): StoreClient | undefined {
 registerStoreClient(epicClient);
 registerStoreClient(gogClient);
 registerStoreClient(amazonClient);
+registerStoreClient(eaClient);
 registerStoreClient(itchClient);
