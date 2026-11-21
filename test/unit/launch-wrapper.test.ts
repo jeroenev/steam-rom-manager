@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
+import * as fs from "fs";
 import {
   gameCommand,
+  installLaunchScripts,
   makeLaunchWrapper,
+  parserScript,
   shellQuote,
   splitCommand,
   wrapperArguments,
@@ -9,7 +12,9 @@ import {
 } from "../../src/lib/launch-wrapper";
 import { ScriptWrapperConfig } from "../../src/models";
 
-const user = (over: Partial<ScriptWrapperConfig> = {}): ScriptWrapperConfig => ({
+const user = (
+  over: Partial<ScriptWrapperConfig> = {},
+): ScriptWrapperConfig => ({
   enabled: true,
   preLaunch: { script: "/u/pre.sh", delay: 2 },
   postLaunch: { script: "/u/post.sh", delay: 0 },
@@ -135,6 +140,27 @@ describe("launch wrapper", () => {
       '"file": "com.epicgames.launcher://apps/X?action=launch"',
     );
     expect(text).toContain('"folder": "C:\\\\Games\\\\X"');
+  });
+
+  it("writes the parsers' scripts, PowerShell ones with a byte order mark", async () => {
+    await installLaunchScripts();
+    for (const name of [
+      "battle-net-start.ps1",
+      "epic-stop.ps1",
+      "epic-cloud-sync.ps1",
+      "launcher-helpers.ps1",
+      "ea-app-start.ps1",
+      "ea-app-stop.ps1",
+      "ubisoft-connect-start.ps1",
+      "ubisoft-connect-stop.ps1",
+    ]) {
+      const text = fs.readFileSync(parserScript(name), "utf8");
+      expect(text.startsWith("﻿# "), name).toBe(true);
+    }
+    // (the launcher scripts load their shared functions from beside them)
+    expect(fs.readFileSync(parserScript("ea-app-stop.ps1"), "utf8")).toContain(
+      ". (Join-Path $PSScriptRoot 'launcher-helpers.ps1')",
+    );
   });
 
   it("Linux/macOS: the file sets shell variables (quoted) and sources the launch script", () => {

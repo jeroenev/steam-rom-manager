@@ -35,6 +35,11 @@ const bundledScripts = (): Record<string, string> => ({
   "scripts/battle-net-start.ps1": require("./scripts/battle-net-start.ps1"),
   "scripts/epic-stop.ps1": require("./scripts/epic-stop.ps1"),
   "scripts/epic-cloud-sync.ps1": require("./scripts/epic-cloud-sync.ps1"),
+  "scripts/launcher-helpers.ps1": require("./scripts/launcher-helpers.ps1"),
+  "scripts/ea-app-start.ps1": require("./scripts/ea-app-start.ps1"),
+  "scripts/ea-app-stop.ps1": require("./scripts/ea-app-stop.ps1"),
+  "scripts/ubisoft-connect-start.ps1": require("./scripts/ubisoft-connect-start.ps1"),
+  "scripts/ubisoft-connect-stop.ps1": require("./scripts/ubisoft-connect-stop.ps1"),
 });
 
 // Where a parser's own script is, once installed.
@@ -206,9 +211,7 @@ export function wrapperFileContent(
 async function writeScript(file: string, content: string) {
   await fs.outputFile(
     file,
-    file.endsWith(".ps1")
-      ? `\ufeff${content}`
-      : content.replace(/\r\n/g, "\n"),
+    file.endsWith(".ps1") ? `\ufeff${content}` : content.replace(/\r\n/g, "\n"),
     { encoding: "utf8", mode: 0o755 },
   );
 }
@@ -225,7 +228,10 @@ export async function writeWrapperFile(
   shortAppId: string,
   game: WrappedGame,
 ) {
-  await writeScript(wrapperFile(accountId, shortAppId), wrapperFileContent(game));
+  await writeScript(
+    wrapperFile(accountId, shortAppId),
+    wrapperFileContent(game),
+  );
 }
 
 // Wrapped games removed from Steam: their files go. (Files of games that
