@@ -1662,21 +1662,23 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
 
   // When the user picks a parser type, the inputs of that type that have no
   // value get their initial ones (a Store Account's toggles start on), and
-  // an empty Steam category gets the type's (a Store Account's "Not
-  // installed"). Not when a parser is loaded: that would change it.
+  // the Steam categories follow the type (see categoriesAfterTypeChange: a
+  // Store Account's "Not installed" comes and goes with it). Not when a
+  // parser is loaded: that would change it.
   private watchParserType() {
     const control = this.userForm.get("parserType");
     let current = control.value;
     return control.valueChanges.subscribe((type: ParserType) => {
       const picked = type !== current && !this.resetting;
+      const previous = current;
       current = type;
       if (picked && type) {
-        this.applyTypeDefaults(type);
+        this.applyTypeDefaults(type, previous);
       }
     });
   }
 
-  private applyTypeDefaults(type: ParserType) {
+  private applyTypeDefaults(type: ParserType, previous?: ParserType) {
     const info = this.parsersService.getParserInfo(type);
     for (const [name, input] of Object.entries(info?.inputs ?? {})) {
       const control = this.userForm.get(["parserInputs", name]);
@@ -1689,10 +1691,16 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
         control.setValue(_.cloneDeep(input.initialValue));
       }
     }
-    const categories = parserInfo.parserTypeDefaults[type]?.steamCategories;
     const categoriesControl = this.userForm.get("steamCategories");
-    if (categories && categoriesControl && !categoriesControl.value?.length) {
-      categoriesControl.setValue([...categories]);
+    if (categoriesControl) {
+      const categories = parserInfo.categoriesAfterTypeChange(
+        previous,
+        type,
+        categoriesControl.value,
+      );
+      if (!_.isEqual(categories, categoriesControl.value ?? [])) {
+        categoriesControl.setValue(categories);
+      }
     }
   }
 

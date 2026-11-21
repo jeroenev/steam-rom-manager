@@ -117,6 +117,32 @@ export const parserTypeDefaults: Partial<
   "Store Account": { steamCategories: ["Not installed"] },
 };
 
+// A parser's Steam categories once its type changes from `previous` to
+// `next`: the previous type's default categories, as they were, go (a Store
+// Account's "Not installed" would misfile an Epic parser's installed
+// games); then empty categories get the new type's default. Categories the
+// user changed stay as they are.
+export function categoriesAfterTypeChange(
+  previous: ParserType | undefined,
+  next: ParserType,
+  categories: readonly string[] | null | undefined,
+): string[] {
+  const sameList = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((value, i) => value === b[i]);
+  const previousDefault = previous
+    ? parserTypeDefaults[previous]?.steamCategories
+    : undefined;
+  let result = [...(categories ?? [])];
+  if (previousDefault && sameList(result, previousDefault)) {
+    result = [];
+  }
+  const nextDefault = parserTypeDefaults[next]?.steamCategories;
+  if (result.length === 0 && nextDefault) {
+    result = [...nextDefault];
+  }
+  return result;
+}
+
 export const availableParsers: ParserType[] = Object.keys(
   availableParserInputs,
 ) as ParserType[];

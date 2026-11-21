@@ -325,6 +325,11 @@ async function apply(
     const converted = convert(typeField, typeEntry[1], ctx);
     if (!converted.ok) return { config, given, errors: converted.errors };
     if (converted.value !== config.parserType) {
+      config.steamCategories = parserInfo.categoriesAfterTypeChange(
+        config.parserType,
+        converted.value,
+        config.steamCategories,
+      );
       config.parserType = converted.value;
       resetParserInputs(config);
     }
