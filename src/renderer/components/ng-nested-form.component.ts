@@ -96,6 +96,15 @@ export class NgNestedFormComponent implements OnInit {
     return el["__hidden"];
   }
 
+  // The store an Account element shows, made once (the template asks on
+  // every check).
+  getAccountStore(el: NestedFormElement.Account) {
+    if (el.__store === undefined) {
+      el.__store = el.store();
+    }
+    return el.__store;
+  }
+
   private buildSectionMap(group: NestedFormElement.Group) {
     let currentSection = null;
     let hiddenSections: { [sectionname: string]: boolean } = {};
@@ -124,7 +133,10 @@ export class NgNestedFormComponent implements OnInit {
         group.children[childKey] instanceof NestedFormElement.Group === false;
       let notSection =
         group.children[childKey] instanceof NestedFormElement.Section === false;
-      if (notGroup && notSection) {
+      // (shown only: no value of the form)
+      let notAccount =
+        group.children[childKey] instanceof NestedFormElement.Account === false;
+      if (notGroup && notSection && notAccount) {
         let child = group.children[childKey] as NestedFormInputs;
         let formControl: IndexedFormControl<any> = new FormControl();
 

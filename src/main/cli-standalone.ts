@@ -3,8 +3,14 @@
 // scripts/build-cli.ts). Same commands, data and behavior as `srm <command>`
 // through the app.
 import * as tls from "tls";
+import { readOnlyStoreHost, setStoreHost } from "../lib/stores";
 import { parseCliArgs } from "./cli-args";
 import { runCli } from "./cli";
+
+// Store accounts: plain Node can neither read the app's sign-ins (they're
+// encrypted with Electron's safeStorage) nor show a sign-in window, so the
+// Store Account parser uses the libraries the app last fetched.
+setStoreHost(readOnlyStoreHost);
 
 // node:sqlite (used for some parsers' databases) announces itself as
 // experimental on stderr; that's not the user's business.

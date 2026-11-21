@@ -1,0 +1,105 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Store Account parser (characterization) > GOG on Windows: Galaxy opens the game; installed, prerelease, installed elsewhere and Steam's games are left out 1`] = `
+[
+  {
+    "configurationTitle": "Owned",
+    "failed": [],
+    "files": [
+      {
+        "argumentString": "/urlProtocol="goggalaxy://openGameView/1771589310"",
+        "executableLocation": "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe",
+        "modifiedExecutableLocation": ""C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe"",
+        "startInDirectory": "C:\\Program Files (x86)\\GOG Galaxy",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "Disco Elysium",
+      },
+      {
+        "argumentString": "/urlProtocol="goggalaxy://openGameView/1207664643"",
+        "executableLocation": "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe",
+        "modifiedExecutableLocation": ""C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe"",
+        "startInDirectory": "C:\\Program Files (x86)\\GOG Galaxy",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "The Witcher 3: Wild Hunt",
+      },
+    ],
+  },
+]
+`;
+
+exports[`Store Account parser (characterization) > itch.io without the itch app, and Linux with Heroic: store pages and Heroic links 1`] = `
+[
+  {
+    "configurationTitle": "itch.io owned",
+    "failed": [],
+    "files": [
+      {
+        "argumentString": ""https://mattmakesgames.itch.io/celesteclassic"",
+        "executableLocation": "C:\\WINDOWS\\explorer.exe",
+        "modifiedExecutableLocation": ""C:\\WINDOWS\\explorer.exe"",
+        "startInDirectory": "C:\\WINDOWS",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "Celeste Classic",
+      },
+    ],
+  },
+  {
+    "configurationTitle": "GOG owned on a Steam Deck",
+    "failed": [],
+    "files": [
+      {
+        "argumentString": "run com.heroicgameslauncher.hgl heroic://launch/gog/1771589310 --no-gui --no-sandbox",
+        "executableLocation": "/usr/bin/flatpak",
+        "modifiedExecutableLocation": ""/usr/bin/flatpak"",
+        "startInDirectory": "/usr/bin",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "Disco Elysium",
+      },
+      {
+        "argumentString": "run com.heroicgameslauncher.hgl heroic://launch/gog/1207664643 --no-gui --no-sandbox",
+        "executableLocation": "/usr/bin/flatpak",
+        "modifiedExecutableLocation": ""/usr/bin/flatpak"",
+        "startInDirectory": "/usr/bin",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "The Witcher 3: Wild Hunt",
+      },
+    ],
+  },
+  {
+    "configurationTitle": "GOG owned, store pages",
+    "failed": [],
+    "files": [
+      {
+        "argumentString": ""https://www.gog.com/account"",
+        "executableLocation": "/usr/bin/xdg-open",
+        "modifiedExecutableLocation": ""/usr/bin/xdg-open"",
+        "startInDirectory": "/usr/bin",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "Disco Elysium",
+      },
+      {
+        "argumentString": ""https://www.gog.com/game/the_witcher_3_wild_hunt"",
+        "executableLocation": "/usr/bin/xdg-open",
+        "modifiedExecutableLocation": ""/usr/bin/xdg-open"",
+        "startInDirectory": "/usr/bin",
+        "steamCategories": [
+          "Not installed",
+        ],
+        "title": "The Witcher 3: Wild Hunt",
+      },
+    ],
+  },
+]
+`;

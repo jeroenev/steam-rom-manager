@@ -3,6 +3,7 @@ import {
   ParserInfo,
   ParserType,
   UserConfiguration,
+  isSavedInput,
 } from "../models";
 import * as parserInfo from "../lib/parsers/available-parsers";
 import {
@@ -511,6 +512,9 @@ export function parserInputFields(
   const fields: ParserField[] = [];
   for (const type of parserInfo.availableParsers) {
     for (const [name, input] of Object.entries(infos[type]?.inputs ?? {})) {
+      if (!isSavedInput(input.inputType)) {
+        continue; // (a Store Account's sign-in: not a setting)
+      }
       const dependsOn = input.hiddenUnless;
       fields.push(
         field(

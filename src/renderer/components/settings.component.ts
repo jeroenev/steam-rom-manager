@@ -28,6 +28,12 @@ import {
   dnsSelect,
   loadStrategiesSelect,
 } from "../../lib/image-providers/available-providers";
+import {
+  DEFAULT_STORE_ORDER,
+  STORE_NAMES,
+  StoreKey,
+  isStoreKey,
+} from "../../lib/stores/types";
 
 @Component({
   selector: "settings",
@@ -57,6 +63,10 @@ export class SettingsComponent implements OnDestroy {
   chooseUserAccountsVisible: boolean = false;
   showMarkdown: boolean = false;
   tab: "settings" | "themeEditor" = "settings";
+  // Owned games: every store, most preferred first.
+  storeOrder: StoreKey[] = [];
+  readonly storeNames = STORE_NAMES;
+  multiStoreOptions: SelectItem[];
   private subscriptions: Subscription = new Subscription();
   constructor(
     private settingsService: SettingsService,
@@ -95,6 +105,7 @@ export class SettingsComponent implements OnDestroy {
   ngOnInit() {
     this.subscriptions.add(
       this.settingsService.getChangeObservable().subscribe(() => {
+        this.listStoreOrder();
         this.changeDetectionRef.detectChanges();
         this.knownSteamDirectories =
           this.parsersService.getKnownSteamDirectories();
@@ -108,6 +119,11 @@ export class SettingsComponent implements OnDestroy {
       }),
     );
     this.settings = this.settingsService.getSettings();
+    this.listStoreOrder();
+    this.multiStoreOptions = [
+      { value: "preferred", displayValue: this.lang.text.multiStorePreferred },
+      { value: "all", displayValue: this.lang.text.multiStoreAll },
+    ];
     this.availableBatches = [10, 20, 50, 100, 200, 500].map((x) => {
       return { value: x, displayValue: x.toString() };
     });
@@ -146,6 +162,28 @@ export class SettingsComponent implements OnDestroy {
 
   ngOnDestroy() {
     this.subscriptions.unsubscribe();
+  }
+
+  // The store order as it ranks stores: the ones the setting lists, then
+  // the others in the default order.
+  private listStoreOrder() {
+    const listed = (this.settings?.ownedGames?.storeOrder ?? []).filter(
+      isStoreKey,
+    );
+    this.storeOrder = [...new Set([...listed, ...DEFAULT_STORE_ORDER])];
+  }
+
+  // Moves a store up (-1) or down (1) in the store order.
+  moveStore(index: number, by: -1 | 1) {
+    const order = [...this.storeOrder];
+    const to = index + by;
+    if (to < 0 || to >= order.length) {
+      return;
+    }
+    [order[index], order[to]] = [order[to], order[index]];
+    this.settings.ownedGames.storeOrder = order;
+    this.storeOrder = order;
+    this.onSettingsChange();
   }
 
   onSettingsChange(detectChanges: boolean = true) {

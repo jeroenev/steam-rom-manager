@@ -23,6 +23,14 @@ describe("commitLookup", () => {
     expect(commitLookup("2.5.45", hashes)).toBe("master");
     expect(commitLookup("x.y", hashes)).toBe("master");
   });
+  it("pins SRM versions without the Store Account parser to presets from before it", () => {
+    // (their schema refuses the whole download over one unknown parser type)
+    const repoHashes = repoFile("files/presetsHashes.json");
+    expect(commitLookup("2.6.3", repoHashes)).toBe(
+      "b3f46785c997226cb28515dd73a9ef58851a8fdc",
+    );
+    expect(commitLookup("2.5.44", repoHashes)).not.toBe("master");
+  });
 });
 
 describe("PresetsStore", () => {

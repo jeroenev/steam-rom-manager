@@ -77,6 +77,7 @@ export function hostCore(
     builder: core.builder,
     library: core.library,
     support: core.support,
+    stores: core.stores,
     writer: {
       save: (previewData: any, onlineImages: any, options: any) =>
         core.writer.save(previewData, onlineImages, options, (progress) =>
@@ -94,6 +95,7 @@ export function hostCore(
         imageType: string,
         apis: any,
         provider: any,
+        platformIds?: any,
       ) =>
         core.providers.retrieveUrls(
           title,
@@ -101,6 +103,7 @@ export function hostCore(
           apis,
           provider,
           (event, data) => emit("providers:event", { id, event, data }),
+          Array.isArray(platformIds) ? platformIds : [],
         ),
       stopUrlDownload: async () => core.providers.stopUrlDownload(),
       // SteamGridDB games matching a title ("fix match").
@@ -113,7 +116,14 @@ export function hostCore(
     if (!isAllowed(target, method, "async")) {
       throw new Error(`Not allowed: ${target}.${method}`);
     }
-    return targets[target][method](...args);
+    try {
+      return await targets[target][method](...args);
+    } catch (e) {
+      // Only the message crosses, as with sync calls: Electron sends the
+      // error's toString(), which puts its kind in front of the message
+      // ("LoginRejected: …"), and the UI would show that.
+      throw new Error(text(e), { cause: e });
+    }
   });
 
   const callSync = ({
@@ -166,6 +176,7 @@ export function hostCore(
     .observeList()
     .subscribe((list) => emit("fuzzy:list", { totalGames: list.totalGames }));
   core.providers.stopEvent.subscribe(() => emit("providers:stopped", null));
+  core.stores.onChange((store) => emit("stores:changed", { store }));
 
   for (const [name, promise] of Object.entries(core.ready ?? {})) {
     promise.then(() => {

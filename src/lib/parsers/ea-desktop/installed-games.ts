@@ -21,19 +21,9 @@ export const defaultGamesDirs = [
 
 // Shortcuts in launcher mode start PowerShell. A shortcut's app id comes
 // from its exe's path (and title), so wherever Windows is in C:\WINDOWS (in
-// any case) the path stays the one SRM always wrote.
-export function powershellPath(systemRoot: string | undefined): string {
-  const root = (systemRoot || "").replace(/[\\/]+$/, "");
-  const windows =
-    root && root.toLowerCase() !== "c:\\windows" ? root : "C:\\WINDOWS";
-  return path.win32.join(
-    windows,
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe",
-  );
-}
+// any case) the path stays the one SRM always wrote. (Shared with the store
+// accounts' EA shortcuts, src/lib/stores/targets.ts.)
+export { powershellPath } from "../../helpers/launchers/windows";
 
 // The folders that hold an EA app install (a __Installer\installerdata.xml):
 // - the games in `gamesDir` (the parser's folder field), or when that is
@@ -99,31 +89,9 @@ export async function installedGames(
   const failed: string[] = [];
   const contentIds = new Set<string>();
   for (const gameDir of folders) {
-    const file = installDataFile(gameDir);
-    let xmlBuffer: Buffer;
-    try {
-      xmlBuffer = fs.readFileSync(file);
-    } catch (e) {
-      failed.push(`Could not read ${file}: ${e}`);
-      continue;
-    }
-    // Parsers run in the main process: the library's Node build takes
-    // a Buffer (or path); its browser build took a Blob.
-    const fileInfo = await languageEncoding(xmlBuffer);
-
-    let xmlString;
-    if (fileInfo.encoding == "UTF-8") {
-      xmlString = xmlBuffer.toString();
-    } else if (fileInfo.encoding == "UTF-16LE") {
-      xmlString = xmlBuffer.toString("utf16le");
-    } else {
-      // (one odd file: that game fails, not the whole parser)
-      failed.push(`Unrecognized file encoding for ${file}.`);
-      continue;
-    }
-
-    const game = parseInstallerData(xmlString, gameDir, { launcherMode });
+    const game = await readInstallerData(gameDir, { launcherMode });
     if (typeof game === "string") {
+      // (one odd file: that game fails, not the whole parser)
       failed.push(game);
       continue;
     }
@@ -157,10 +125,43 @@ export async function installedGames(
   return { success, failed };
 }
 
+// The game in `gameDir`, from its installer data (UTF-8 or UTF-16LE, as
+// EA Desktop writes it), or why there is none. Also what the owned-games
+// code (src/lib/stores/installed-ids.ts) reads an installed EA game's
+// content ids with.
+export async function readInstallerData(
+  gameDir: string,
+  options: { launcherMode?: boolean } = {},
+): Promise<InstallerDataGame | string> {
+  const file = installDataFile(gameDir);
+  let xmlBuffer: Buffer;
+  try {
+    xmlBuffer = fs.readFileSync(file);
+  } catch (e) {
+    return `Could not read ${file}: ${e}`;
+  }
+  // Parsers run in the main process: the library's Node build takes
+  // a Buffer (or path); its browser build took a Blob.
+  const fileInfo = await languageEncoding(xmlBuffer);
+
+  let xmlString;
+  if (fileInfo.encoding == "UTF-8") {
+    xmlString = xmlBuffer.toString();
+  } else if (fileInfo.encoding == "UTF-16LE") {
+    xmlString = xmlBuffer.toString("utf16le");
+  } else {
+    return `Unrecognized file encoding for ${file}.`;
+  }
+  return parseInstallerData(xmlString, gameDir, options);
+}
+
 export interface InstallerDataGame {
   title: string;
   // The first content id (the game's own), which origin2:// links take.
   contentId: string;
+  // Every content id the installer data lists, the first one first (an
+  // owned game is matched by any of them).
+  contentIds: string[];
   // The game's exe; in launcher mode, when there is none, its folder.
   filePath: string;
   // The exe's arguments, from the installer data.
@@ -293,6 +294,9 @@ export function parseInstallerData(
     return {
       title,
       contentId: appID,
+      contentIds: (Array.isArray(contentID) ? contentID : [contentID])
+        .filter((id) => id !== null && id !== undefined && id !== "")
+        .map(String),
       filePath: runtimePath
         ? path.join(gameDir, runtimePath.replace(/^\[.*?\]/, ""))
         : gameDir,

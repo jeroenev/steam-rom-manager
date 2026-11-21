@@ -10,7 +10,7 @@ import * as fs from "fs-extra";
 import * as path from "path";
 import * as os from "os";
 import { SqliteWrapper } from "../helpers/sqlite";
-import Registry from "winreg";
+import { galaxyPaths, readGogRegistryGames } from "../helpers/launchers";
 
 export class GOGParser implements GenericParser {
   private get lang() {
@@ -47,96 +47,59 @@ export class GOGParser implements GenericParser {
     };
   }
 
-  private processRegKey(regkey: Registry.Registry) {
-    return new Promise<{ success: ParsedSuccess; failMessage: string }>(
-      (resolve, reject) => {
-        regkey.values((err: Error, values: Registry.RegistryItem[]) => {
-          if (err) {
-            return reject(err);
-          }
-          if (values) {
-            const transformed = Object.fromEntries(
-              values
-                .filter((entry) => entry.name && entry.value)
-                .map((entry) => [entry.name, entry.value]),
-            );
-            if (
-              transformed.gameName &&
-              transformed.gameID &&
-              transformed.launchCommand &&
-              transformed.workingDir
-            ) {
-              if (transformed.dependsOn) {
-                // ignore DLC
-                resolve({
-                  success: null,
-                  failMessage: `Skipping DLC: ${transformed.gameName}`,
-                });
-              } else {
-                if (!fs.existsSync(transformed.launchCommand)) {
-                  return resolve({
-                    success: null,
-                    failMessage: `Skipping Missing Executable: ${transformed.gameName}`,
-                  });
-                }
-                return resolve({
-                  success: {
-                    extractedTitle: transformed.gameName,
-                    extractedAppId: transformed.gameID,
-                    launchOptions: `/command=runGame /gameId=${transformed.gameID}`,
-                    filePath: transformed.launchCommand,
-                    fileLaunchOptions: transformed.launchParam,
-                    startInDirectory: transformed.workingDir,
-                  },
-                  failMessage: null,
-                });
-              }
-            } else {
-              resolve(null);
-            }
-          }
-        });
-      },
-    );
+  // A game's registry values as a parsed game, a reason to skip it, or
+  // null when they aren't a game's.
+  private processRegEntry(
+    transformed: Record<string, string>,
+  ): { success: ParsedSuccess; failMessage: string } | null {
+    if (
+      transformed.gameName &&
+      transformed.gameID &&
+      transformed.launchCommand &&
+      transformed.workingDir
+    ) {
+      if (transformed.dependsOn) {
+        // ignore DLC
+        return {
+          success: null,
+          failMessage: `Skipping DLC: ${transformed.gameName}`,
+        };
+      }
+      if (!fs.existsSync(transformed.launchCommand)) {
+        return {
+          success: null,
+          failMessage: `Skipping Missing Executable: ${transformed.gameName}`,
+        };
+      }
+      return {
+        success: {
+          extractedTitle: transformed.gameName,
+          extractedAppId: transformed.gameID,
+          launchOptions: `/command=runGame /gameId=${transformed.gameID}`,
+          filePath: transformed.launchCommand,
+          fileLaunchOptions: transformed.launchParam,
+          startInDirectory: transformed.workingDir,
+        },
+        failMessage: null,
+      };
+    }
+    return null;
   }
 
-  private getRegInstalled(executableLocation: string) {
-    return new Promise<ParsedData>((resolve, reject) => {
-      const rootkey: string = "\\SOFTWARE\\WOW6432Node\\GOG.com\\Games";
-      const reg = new Registry({
-        hive: Registry.HKLM,
-        key: rootkey,
-      });
-
-      reg.keys((err: Error, regkeys: Registry.Registry[]) => {
-        if (err) {
-          return reject(err);
-        }
-        if (regkeys) {
-          const promiseArr = regkeys.map((regkey) =>
-            this.processRegKey(regkey),
-          );
-          Promise.all(promiseArr)
-            .then((parsedArray) => {
-              let parsedData: ParsedData = {
-                executableLocation: executableLocation,
-                success: parsedArray
-                  .filter((x) => x && !x.failMessage)
-                  .map((x) => x.success),
-                failed: parsedArray
-                  .filter((x) => x && x.failMessage)
-                  .map((x) => x.failMessage),
-              };
-              return resolve(parsedData);
-            })
-            .catch((err) => {
-              return reject(err);
-            });
-        } else {
-          return resolve({ success: [], failed: [] });
-        }
-      });
-    });
+  private async getRegInstalled(executableLocation: string) {
+    const parsedArray = (await readGogRegistryGames()).map((values) =>
+      this.processRegEntry(values),
+    );
+    let parsedData: ParsedData = {
+      executableLocation: executableLocation,
+      success: parsedArray
+        .filter((x) => x && !x.failMessage)
+        .map((x) => x.success),
+      failed: parsedArray
+        .filter((x) => x && x.failMessage)
+        .map((x) => x.failMessage),
+    };
+    return parsedData;
   }
 
   execute(
@@ -145,17 +108,11 @@ export class GOGParser implements GenericParser {
     cache?: { [key: string]: any },
   ) {
     return new Promise<ParsedData>(async (resolve, reject) => {
-      let dbPath, galaxyExePath: string;
-      if (os.type() == "Windows_NT") {
-        dbPath = "C:\\ProgramData\\GOG.com\\Galaxy\\storage\\galaxy-2.0.db";
-        galaxyExePath = "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe";
-      } else if (os.type() == "Darwin") {
-        dbPath = "/Users/Shared/GOG.com/Galaxy/Storage/galaxy-2.0.db";
-        galaxyExePath =
-          "/Applications/GOG Galaxy.app/Contents/MacOS/GOG Galaxy";
-      } else {
+      const galaxy = galaxyPaths();
+      if (!galaxy) {
         return reject(this.lang.errors.gogNotCompatible);
       }
+      let { dbPath, exePath: galaxyExePath } = galaxy;
       if (inputs.galaxyExeOverride) {
         galaxyExePath = inputs.galaxyExeOverride;
       }

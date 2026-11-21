@@ -8,7 +8,10 @@ import * as paths from "../../src/paths";
 import { Core } from "../../src/core/core";
 import * as commands from "../../src/core/parser-commands";
 import { emptyValue, getFieldValue } from "../../src/core/parser-fields";
-import { availableParsers } from "../../src/lib/parsers/available-parsers";
+import {
+  availableParsers,
+  categoriesAfterTypeChange,
+} from "../../src/lib/parsers/available-parsers";
 import {
   makeConfig,
   makeFakeSteam,
@@ -99,6 +102,63 @@ describe("parser commands (headless Core)", () => {
         expect(fails, `${parserType}: --${field.flag}`).toBe(field.required);
       }
     }
+  });
+
+  it("a new Store Account parser: the Not installed collection, its options on, no account kept", () => {
+    const config = commands.defaultConfig("Store Account");
+    expect(config.steamCategories).toEqual(["Not installed"]);
+    // (the account input is shown, never saved with the parser)
+    expect(config.parserInputs).toEqual({
+      storeAccount: emptyValue("select"),
+      storeInstallWith: "auto",
+      storeSkipPrereleases: true,
+      storeSkipInstalledElsewhere: true,
+      storeSkipSteamInstalled: true,
+    });
+    // (the collection comes with the type)
+    expect(commands.defaultConfig("Glob").steamCategories).toEqual([]);
+  });
+
+  it("the Steam categories follow the parser type: a Store Account's default comes and goes with it", () => {
+    // Picked, then away again: the default goes, not to misfile installed
+    // games in "Not installed".
+    expect(categoriesAfterTypeChange(undefined, "Store Account", [])).toEqual([
+      "Not installed",
+    ]);
+    expect(
+      categoriesAfterTypeChange("Store Account", "Epic", ["Not installed"]),
+    ).toEqual([]);
+    expect(categoriesAfterTypeChange("Epic", "Store Account", [])).toEqual([
+      "Not installed",
+    ]);
+    // What the user set stays.
+    expect(
+      categoriesAfterTypeChange("Store Account", "Epic", ["Owned", "Later"]),
+    ).toEqual(["Owned", "Later"]);
+    expect(
+      categoriesAfterTypeChange("Glob", "Store Account", ["Not installed"]),
+    ).toEqual(["Not installed"]);
+    expect(categoriesAfterTypeChange("Glob", "Epic", ["SNES"])).toEqual([
+      "SNES",
+    ]);
+    expect(categoriesAfterTypeChange("Glob", "Epic", null)).toEqual([]);
+  });
+
+  it("edit: a Store Account parser changed to another type loses its Not installed collection", async () => {
+    const core = await loadCore();
+    const created = await commands.createParser(core, {
+      ptype: "Store Account",
+      name: "Owned",
+      "store-account": "gog",
+    });
+    expect(created.errors).toBeUndefined();
+    const saved = () => onDisk().find((c: any) => c.configTitle === "Owned");
+    expect(saved().steamCategories).toEqual(["Not installed"]);
+    const edited = await commands.editParser(core, "Owned", {
+      ptype: "Steam",
+    });
+    expect(edited.errors).toBeUndefined();
+    expect(saved()).toMatchObject({ parserType: "Steam", steamCategories: [] });
   });
 
   it("every option name is unique", () => {

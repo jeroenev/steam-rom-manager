@@ -20,8 +20,17 @@ export function makeRpcPair() {
     },
   };
   const client: ClientTransport = {
-    invoke: async (channel, req) =>
-      structuredClone(await asyncHandlers.get(channel)(structuredClone(req))),
+    invoke: async (channel, req) => {
+      let result: any;
+      try {
+        result = await asyncHandlers.get(channel)(structuredClone(req));
+      } catch (err) {
+        // As Electron: the main side replies with the error's toString(),
+        // and ipcRenderer.invoke throws a new Error with it.
+        throw new Error(`Error invoking remote method '${channel}': ${err}`);
+      }
+      return structuredClone(result);
+    },
     sendSync: (channel, req) =>
       structuredClone(syncHandlers.get(channel)(structuredClone(req))),
     on: (channel, listener) => {

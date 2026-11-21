@@ -1,76 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { ArtworkProviders } from "../../src/core/artwork-providers";
 import { SgdbClient } from "../../src/core/sgdb-client";
-import { Fetch } from "../../src/core/http";
-
-// A fake SteamGridDB API + Steam CDN.
-function fakeApi(opts: { failGrids?: number } = {}) {
-  const requests: { url: string; method: string; auth?: string }[] = [];
-  const ok = (data: any) => ({ success: true, data });
-  const fetch: Fetch = async (url, init) => {
-    requests.push({
-      url,
-      method: init?.method ?? "GET",
-      auth: init?.headers?.Authorization,
-    });
-    const respond = (body: any, status = 200) => ({
-      ok: status < 300,
-      status,
-      statusText: String(status),
-      json: async () => body,
-      text: async () => "",
-      arrayBuffer: async () => new ArrayBuffer(0),
-    });
-    const u = new URL(url);
-    if (u.hostname === "shared.steamstatic.com") {
-      return respond(null, u.pathname.includes("missing") ? 404 : 200);
-    }
-    const p = decodeURIComponent(u.pathname.replace("/api/v2", ""));
-    if (p.startsWith("/search/autocomplete/")) {
-      const term = p.slice("/search/autocomplete/".length);
-      return respond(ok(term === "Unknown Game" ? [] : [{ id: 42 }]));
-    }
-    if (p === "/grids/game/42") {
-      if (opts.failGrids) return respond({ success: false }, opts.failGrids);
-      return respond(
-        ok([
-          {
-            id: 1,
-            url: `https://cdn/grid-${u.searchParams.get("dimensions")}.png`,
-            author: { name: "alice" },
-          },
-        ]),
-      );
-    }
-    if (p === "/heroes/game/42") {
-      return respond(
-        ok([{ id: 2, url: "https://cdn/hero.png", author: { name: "bob" } }]),
-      );
-    }
-    if (p === "/games/id/42") {
-      return respond(
-        ok({
-          external_platform_data: {
-            steam: [
-              {
-                id: 220,
-                metadata: {
-                  clienticon: "abc",
-                  header_image_full: { english: "header.jpg" },
-                  library_hero_full: { image: { english: "missing.jpg" } },
-                  // (Steam has no logo for it: its entry is null)
-                  library_logo_full: null,
-                },
-              },
-            ],
-          },
-        }),
-      );
-    }
-    return respond({ success: false, errors: ["not found"] }, 404);
-  };
-  return { fetch, requests };
-}
+import { HttpError } from "../../src/core/http";
+import { SgdbPlatformId } from "../../src/models";
+import {
+  fakeSgdbApi as fakeApi,
+  sgdbApiPaths as paths,
+} from "../helpers/fake-sgdb";
 
 function lookup(
   providers: ArtworkProviders,
@@ -78,6 +14,7 @@ function lookup(
   imageType: string,
   provider: "sgdb" | "steamCDN",
   apis: object = {},
+  platformIds: SgdbPlatformId[] = [],
 ) {
   return new Promise<{ event: string; data: any }[]>((resolve) => {
     const events: { event: string; data: any }[] = [];
@@ -90,9 +27,12 @@ function lookup(
         events.push({ event, data });
         if (event === "completed") resolve(events);
       },
+      platformIds,
     );
   });
 }
+
+const epic = (id: string): SgdbPlatformId => ({ platform: "egs", id });
 
 describe("ArtworkProviders", () => {
   it("SteamGridDB: searches, then queries the artwork type with the parser's options", async () => {
@@ -177,8 +117,118 @@ describe("ArtworkProviders", () => {
     const providers = new ArtworkProviders(api.fetch);
     for (const type of ["logo", "tall"]) {
       const events = await lookup(providers, "Some Game", type, "steamCDN");
-      expect(events.map((e) => e.event), type).toEqual(["completed"]);
+      expect(
+        events.map((e) => e.event),
+        type,
+      ).toEqual(["completed"]);
     }
+  });
+
+  it("a store id SteamGridDB knows: its game, without a title search", async () => {
+    const api = fakeApi();
+    const events = await lookup(
+      new ArtworkProviders(api.fetch),
+      "Unknown Game",
+      "hero",
+      "sgdb",
+      {},
+      [epic("Sugar")],
+    );
+    expect(events.map((e) => e.event)).toEqual(["image", "completed"]);
+    expect(events[0].data.content).toMatchObject({
+      imageUrl: "https://cdn/hero.png",
+      imageGameId: "42",
+      imageArtworkId: "2",
+    });
+    expect(paths(api.requests)).toEqual([
+      "/games/egs/Sugar",
+      "/heroes/game/42",
+    ]);
+    expect(api.requests[0].auth).toMatch(/^Bearer /);
+  });
+
+  it("a store id SteamGridDB doesn't know (or can't be asked): the next one, then the title; no error for the id", async () => {
+    const api = fakeApi();
+    const events = await lookup(
+      new ArtworkProviders(api.fetch),
+      "Some Game",
+      "hero",
+      "sgdb",
+      {},
+      [{ platform: "bnet", id: "Pro" }, epic("Unreachable")],
+    );
+    expect(events.map((e) => e.event)).toEqual(["image", "completed"]);
+    expect(events[0].data.content.imageGameId).toBe("42");
+    expect(paths(api.requests)).toEqual([
+      "/games/bnet/Pro",
+      "/games/egs/Unreachable",
+      "/search/autocomplete/Some%20Game",
+      "/heroes/game/42",
+    ]);
+
+    // Neither the ids nor the title: the title's "no match", as before.
+    const none = await lookup(
+      new ArtworkProviders(fakeApi().fetch),
+      "Unknown Game",
+      "long",
+      "sgdb",
+      {},
+      [{ platform: "bnet", id: "Pro" }],
+    );
+    expect(none.map((e) => e.event)).toEqual(["error", "completed"]);
+    expect(none[0].data.error).toContain('title "Unknown Game"');
+  });
+
+  it("EA's offer ids go out encoded", async () => {
+    const api = fakeApi();
+    const events = await lookup(
+      new ArtworkProviders(api.fetch),
+      "Unknown Game",
+      "hero",
+      "sgdb",
+      {},
+      [{ platform: "origin", id: "OFB-EAST:52735" }],
+    );
+    expect(events[0].data.content.imageGameId).toBe("42");
+    expect(api.requests[0].url).toBe(
+      "https://www.steamgriddb.com/api/v2/games/origin/OFB-EAST%3A52735",
+    );
+  });
+
+  it("an explicit ${gameid:N} (the user's pick) wins over a store id", async () => {
+    const api = fakeApi();
+    await lookup(
+      new ArtworkProviders(api.fetch),
+      "${gameid:42}",
+      "hero",
+      "sgdb",
+      {},
+      [epic("Sugar")],
+    );
+    expect(paths(api.requests)).toEqual(["/heroes/game/42"]);
+  });
+
+  it("one lookup per store id for every artwork type and provider; Steam CDN finds the game by it too", async () => {
+    const api = fakeApi();
+    const providers = new ArtworkProviders(api.fetch);
+    const [long, hero, icon] = await Promise.all([
+      lookup(providers, "Unknown Game", "long", "sgdb", {}, [epic("Sugar")]),
+      lookup(providers, "Unknown Game", "hero", "sgdb", {}, [epic("Sugar")]),
+      lookup(providers, "Unknown Game", "icon", "steamCDN", {}, [
+        epic("Sugar"),
+      ]),
+    ]);
+    expect(long[0].event).toBe("image");
+    expect(hero[0].event).toBe("image");
+    expect(icon[0].data.content.imageUrl).toBe(
+      "https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/220/abc.ico",
+    );
+    expect(
+      paths(api.requests).filter((p) => p.startsWith("/games/egs/")),
+    ).toEqual(["/games/egs/Sugar"]);
+    expect(paths(api.requests).some((p) => p.startsWith("/search/"))).toBe(
+      false,
+    );
   });
 
   it("stopUrlDownload drops results of lookups already started", async () => {
@@ -210,5 +260,19 @@ describe("SgdbClient", () => {
     await expect(client.getLogos({ type: "game", id: 7 })).rejects.toThrow(
       "not found",
     );
+  });
+
+  it("finds a game by its id at a store; an id it doesn't know is a 404", async () => {
+    const api = fakeApi();
+    const client = new SgdbClient(api.fetch);
+    expect(await client.getGameByPlatformId("egs", "Sugar")).toEqual({
+      id: 42,
+      name: "A Game",
+    });
+    const error = await client
+      .getGameByPlatformId("bnet", "Pro")
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(HttpError);
+    expect(error.status).toBe(404);
   });
 });

@@ -68,6 +68,7 @@ function ngObjectsToArray<T>(importObject: T) {
     Components.SettingsComponent,
     Components.ThemeEditorComponent,
     Components.SplashComponent,
+    Components.StoreAccountComponent,
     Components.TitleComponent,
     Components.UpdateNotifierComponent,
     Components.ViewComponent,

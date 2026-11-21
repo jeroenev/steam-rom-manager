@@ -151,6 +151,7 @@ describe("installerdata.xml", () => {
     const alice = {
       title: "Alice: Madness Returns™",
       contentId: "alice2_dd",
+      contentIds: ["alice2_dd"],
       filePath: path.join(
         gameDir,
         "Game\\Alice2\\Binaries\\Win32\\AliceMadnessReturns.exe",
@@ -176,6 +177,7 @@ describe("installerdata.xml", () => {
     ).toEqual({
       title: "No Exe",
       contentId: "Origin.OFR.50.0001",
+      contentIds: ["Origin.OFR.50.0001"],
       filePath: gameDir,
       args: undefined,
     });
@@ -210,11 +212,28 @@ describe("installerdata.xml", () => {
           ).toEqual({
             title: "Older",
             contentId: "222",
+            contentIds: ["222"],
             filePath: exe,
             args: "",
           });
         }
       }
+    }
+  });
+
+  it("lists every content id, the game's own (the first) first, in both formats", () => {
+    const none = () => false;
+    for (const xml of [
+      `<DiPManifest version="4.0"><gameTitles><gameTitle>Many</gameTitle></gameTitles><contentIDs><contentID>1002139</contentID><contentID>Origin.OFR.50.0001</contentID><contentID></contentID></contentIDs></DiPManifest>`,
+      `<game><metadata><localeInfo><title>Many</title></localeInfo></metadata><contentIDs><contentID>1002139</contentID><contentID>Origin.OFR.50.0001</contentID></contentIDs></game>`,
+    ]) {
+      expect(
+        parseInstallerData(xml, gameDir, { launcherMode: true, exists: none }),
+      ).toMatchObject({
+        title: "Many",
+        contentId: "1002139",
+        contentIds: ["1002139", "Origin.OFR.50.0001"],
+      });
     }
   });
 

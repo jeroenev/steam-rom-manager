@@ -43,7 +43,13 @@ import type { SettingsStore } from "./settings-store";
 import type { ArtworkProviders } from "./artwork-providers";
 import type { SteamWriter } from "./steam-writer";
 import type { PreviewBuilder } from "./preview-builder";
-import { addUniqueLocalImage, emptyPools, keepArtworkPicks, keepRetrievedPools } from "./image-pools";
+import {
+  addUniqueLocalImage,
+  emptyPools,
+  keepArtworkPicks,
+  keepRetrievedPools,
+} from "./image-pools";
+import { ownedShortcutsSaved } from "./owned-confirm";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -195,6 +201,9 @@ export class PreviewEngine {
     }
   }
 
+  // `imageKey`: the search the user set for the game (an exception's), which
+  // replaces the pool's searches, store ids included (as the file parser
+  // does).
   updateAppImages(imageKey: string, oldPool: string, artworkType: ArtworkType) {
     if (this.onlineImages[artworkType][oldPool]) {
       this.onlineImages[artworkType][imageKey] = _.cloneDeep(
@@ -202,11 +211,11 @@ export class PreviewEngine {
       );
       this.onlineImages[artworkType][imageKey].retrieving = false;
       for (const providerType of onlineProviders) {
-        this.onlineImages[artworkType][imageKey].online[
-          providerType
-        ].searchQueries = [imageKey];
-        this.onlineImages[artworkType][imageKey].online[providerType].content =
-          [];
+        const online =
+          this.onlineImages[artworkType][imageKey].online[providerType];
+        online.searchQueries = [imageKey];
+        online.platformIds = [];
+        online.content = [];
       }
       if (imageKey != oldPool) {
         delete this.onlineImages[artworkType][oldPool];
@@ -223,11 +232,11 @@ export class PreviewEngine {
   ) {
     if (this.onlineImages[artworkType][imageKey]) {
       for (const providerType of onlineProviders) {
-        this.onlineImages[artworkType][imageKey].online[
-          providerType
-        ].searchQueries = excludeArtwork ? [] : [imageKey];
-        this.onlineImages[artworkType][imageKey].online[providerType].content =
-          [];
+        const online =
+          this.onlineImages[artworkType][imageKey].online[providerType];
+        online.searchQueries = excludeArtwork ? [] : [imageKey];
+        online.platformIds = [];
+        online.content = [];
       }
     }
   }
@@ -281,6 +290,9 @@ export class PreviewEngine {
       );
       if (ok && outcomes) {
         this.updatePreviewDataUrls(outcomes, imageRes);
+      }
+      if (ok && !options.removeAll) {
+        ownedShortcutsSaved(this.previewData);
       }
       if (ok && options.removeAll) {
         this.clearPreviewData();
@@ -696,6 +708,7 @@ export class PreviewEngine {
                       break;
                   }
                 },
+                image.platformIds ?? [],
               );
             }
           }

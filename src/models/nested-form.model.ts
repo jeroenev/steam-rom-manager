@@ -275,6 +275,26 @@ export namespace NestedFormElement {
     }
   }
 
+  // A store account's sign-in and library (a Store Account parser's
+  // "account" input). Shown, never a form value: it has no control.
+  export class Account {
+    static displayName = "Account";
+    /** Optional */
+    label?: string;
+    /** Required: the store whose account to show (e.g. another field's
+     * value), as it changes. */
+    store: () => Observable<string | null>;
+    __store?: Observable<string | null>;
+    /** Optional */
+    isHidden?: NestedInputHidden;
+    __hidden: NestedInputHiddenValue;
+    /** Optional */
+    onInfoClick?: NestedInputInfoClick;
+    constructor(init?: ObjectFields<Account>) {
+      Object.assign(this, init);
+    }
+  }
+
   export class Button {
     static displayName = "Button";
     /** Mandatory */
@@ -302,4 +322,5 @@ export type NestedFormElements =
   | NestedFormInputs
   | NestedFormElement.Group
   | NestedFormElement.Section
-  | NestedFormElement.Button;
+  | NestedFormElement.Button
+  | NestedFormElement.Account;
