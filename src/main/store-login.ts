@@ -154,6 +154,14 @@ function runLogin(
       dropOtherSitesData(ses, sites, visited).catch(() => undefined);
     }
   };
+  // A token store's sign-in partition is this sign-in's alone: it's emptied
+  // however the window ends (Electron keeps the session until SRM quits).
+  const emptyTemporary = () => {
+    if (temporary) {
+      ses.clearStorageData().catch(() => undefined);
+      ses.clearCache().catch(() => undefined);
+    }
+  };
   const finish = async (finalUrl: string, pageText?: string) => {
     if (settled) {
       return;
@@ -170,9 +178,7 @@ function runLogin(
     if (!window.isDestroyed()) {
       window.destroy();
     }
-    if (temporary) {
-      ses.clearStorageData().catch(() => undefined);
-    }
+    emptyTemporary();
     forgetOtherSites();
   };
 
@@ -279,6 +285,7 @@ function runLogin(
       reject(new LoginCancelled("Sign-in window closed"));
       // (a sign-in with Google or Steam may have finished in a pop-up
       // first)
+      emptyTemporary();
       forgetOtherSites();
     }
   });
