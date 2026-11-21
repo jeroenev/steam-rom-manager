@@ -34,15 +34,69 @@ function Get-SessionProcesses([string]$Name) {
     Return @($all | Where-Object { $_.SessionId -eq $session })
 }
 
+# The path of a program ($Process, or the one with id $Id), also of one
+# running as administrator: Windows PowerShell reads Process.Path from the
+# program's modules, which it can't for those. None for a program Windows
+# won't tell about (a protected one, another user's). SRM's launch script
+# has the same (keep the two the same).
+$script:processPathError = $null
+function Get-ProcessPathById([int]$Id) {
+    If (!('SrmProcessPath' -as [type])) {
+        If ($script:processPathError) { Return $null }
+        Try {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SrmProcessPath {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "QueryFullProcessImageNameW")]
+    private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder path, ref uint size);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    public static string Get(int processId) {
+        IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process == IntPtr.Zero) return null;
+        try {
+            StringBuilder path = new StringBuilder(32768);
+            uint size = (uint)path.Capacity;
+            return QueryFullProcessImageName(process, 0, path, ref size) ? path.ToString(0, (int)size) : null;
+        } finally {
+            CloseHandle(process);
+        }
+    }
+}
+'@
+        } Catch {
+            # (e.g. where PowerShell may not compile code: only paths that
+            # Process.Path reads count then)
+            $script:processPathError = $_.Exception.Message
+            Write-Host "Can't read the path of programs running as administrator: $($script:processPathError)"
+            Return $null
+        }
+    }
+    Return [SrmProcessPath]::Get($Id)
+}
+
+function Get-ProcessPath($Process) {
+    If ($Process.Path) { Return [string]$Process.Path }
+    Return Get-ProcessPathById $Process.Id
+}
+
 # Whether a program from the game's folder (or a folder below it) runs. A
-# program whose path can't be read (one running as administrator) counts
-# when it's named like the game's executable.
+# program whose path can't be read at all (a protected one) counts when it's
+# named like the game's executable.
 function Test-GameRunning([string]$GameFolder, [string]$ExeName) {
     If (!$GameFolder) { Return $False }
     $folder = [IO.Path]::GetFullPath($GameFolder).TrimEnd('\') + '\'
     $name = If ($ExeName) { [IO.Path]::GetFileNameWithoutExtension($ExeName) } Else { $null }
     Return [bool]@(Get-SessionProcesses | Where-Object {
-        If ($_.Path) { $_.Path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $name -and $_.ProcessName -eq $name }
+        $path = Get-ProcessPath $_
+        If ($path) { $path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $name -and $_.ProcessName -eq $name }
     }).Count
 }
 
@@ -54,8 +108,8 @@ function Test-LauncherRunning([string]$ProcessName) {
 # Windows reports them (through the real folder where the installed one is a
 # link, as the EA app's is).
 function Get-LauncherFolders([string]$ProcessName) {
-    Return @(Get-SessionProcesses $ProcessName | Where-Object { $_.Path } |
-        ForEach-Object { [IO.Path]::GetDirectoryName($_.Path) } | Sort-Object -Unique)
+    Return @(Get-SessionProcesses $ProcessName | ForEach-Object { Get-ProcessPath $_ } | Where-Object { $_ } |
+        ForEach-Object { [IO.Path]::GetDirectoryName($_) } | Sort-Object -Unique)
 }
 
 # The launcher's programs: its main program, and every program directly in
@@ -64,8 +118,9 @@ function Get-LauncherFolders([string]$ProcessName) {
 function Get-LauncherProcesses([string]$ProcessName, [string[]]$Folders, [string[]]$Except) {
     Return @(Get-SessionProcesses | Where-Object {
         ($Except -notcontains $_.ProcessName) -and (
-            ($_.ProcessName -eq $ProcessName) -or
-            ($_.Path -and ($Folders -contains [IO.Path]::GetDirectoryName($_.Path))))
+            ($_.ProcessName -eq $ProcessName) -or $(
+                $path = Get-ProcessPath $_
+                $path -and ($Folders -contains [IO.Path]::GetDirectoryName($path))))
     })
 }
 
@@ -77,8 +132,8 @@ function Get-LauncherProcesses([string]$ProcessName, [string[]]$Folders, [string
 # cloud sync). The launcher's own programs are those in its folders or below
 # them, but not below a "games" folder there (where Ubisoft Connect installs
 # games by default); programs in Windows' folder (consoles, error reports)
-# don't count either. One whose path can't be read (running as
-# administrator) counts: better to leave the launcher open.
+# don't count either. One whose path can't be read at all (a protected
+# one) counts: better to leave the launcher open.
 function Test-LauncherGameRunning([string]$ProcessName, [string[]]$Folders = @(), [string[]]$Except = @()) {
     $Folders = @(@(Get-LauncherFolders $ProcessName) + $Folders | Where-Object { $_ } | Sort-Object -Unique)
     $ids = @(Get-LauncherProcesses $ProcessName $Folders $Except | ForEach-Object { $_.Id })
@@ -88,6 +143,7 @@ function Test-LauncherGameRunning([string]$ProcessName, [string[]]$Folders = @()
     Return [bool]@(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, ExecutablePath -ErrorAction SilentlyContinue | Where-Object {
         If (($ids -notcontains [int]$_.ParentProcessId) -or ($ids -contains [int]$_.ProcessId)) { Return $False }
         $path = [string]$_.ExecutablePath
+        If (!$path) { $path = [string](Get-ProcessPathById ([int]$_.ProcessId)) }
         If (!$path) { Return $True }
         If ($path.StartsWith($windows, 'OrdinalIgnoreCase')) { Return $False }
         Return !@($own | Where-Object {

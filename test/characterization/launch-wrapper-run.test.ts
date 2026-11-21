@@ -295,14 +295,17 @@ describe("launch script", () => {
       { encoding: "utf8", timeout: 100000 },
     );
     expect(run.status, run.stderr).toBe(0);
+    const log = fs
+      .readFileSync(launchLog(), "utf8")
+      .split(/\r?\n/)
+      .filter((line) => line.includes(`[${title}]`))
+      .join("\n");
+    // (paths of programs running as administrator are read)
+    expect(log).not.toContain("can't read the path");
     return {
       seconds: (Date.now() - began) / 1000,
       steps: fs.readFileSync(order, "utf8").trim().split(/\r?\n/),
-      log: fs
-        .readFileSync(launchLog(), "utf8")
-        .split(/\r?\n/)
-        .filter((line) => line.includes(`[${title}]`))
-        .join("\n"),
+      log,
     };
   }
 

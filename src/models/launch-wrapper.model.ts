@@ -30,9 +30,10 @@ export interface ParserLaunchWrapper {
   // Started instead of the shortcut's own command (e.g. a launcher URL).
   launch?: { file: string; arguments?: string };
   // When the launch hands the game to a launcher: the game is any process
-  // of this Windows session running from this folder (or, for processes
-  // whose path can't be read, named exeName). Otherwise it's the started
-  // process and its children.
+  // of this Windows session running from this folder (its path is read
+  // even when it runs as administrator; one whose path can't be read at
+  // all counts when it's named exeName). Otherwise it's the started process
+  // and its children.
   // The launcher gets startTimeoutMinutes (3 by default) to start the game.
   // (Windows only; elsewhere the started process is watched.)
   game?: { folder: string; exeName?: string; startTimeoutMinutes?: number };

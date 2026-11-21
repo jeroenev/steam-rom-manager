@@ -726,6 +726,54 @@ describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
     if (out !== "none") expect(out).toMatch(/^\S+ False 0$/);
   }, 60000);
 
+  it("reads a program's path, also where Process.Path can't (a program running as administrator)", () => {
+    // (Programs running as administrator can't be started here; on a
+    // machine that has some in this session, their paths are read.)
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        [
+          `. '${parserScript("launcher-helpers.ps1")}'`,
+          "$own = (Get-Process -Id $PID).Path",
+          "'own ' + ((Get-ProcessPathById $PID) -eq $own) + ' ' + ((Get-ProcessPath (Get-Process -Id $PID)) -eq $own)",
+          "$me = [Diagnostics.Process]::GetCurrentProcess().SessionId",
+          "Get-Process | Where-Object { $_.SessionId -eq $me -and !$_.Path } | ForEach-Object { $p = Get-ProcessPath $_; If ($p) { 'read ' + ([IO.Path]::IsPathRooted($p) -and [IO.Path]::GetFileNameWithoutExtension($p) -eq $_.ProcessName) } }",
+          "'none [' + (Get-ProcessPathById 0) + ']'",
+        ].join("; "),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const lines = result.stdout.trim().split(/\r?\n/);
+    expect(lines[0]).toBe("own True True");
+    expect(lines.slice(1, -1).filter((line) => line !== "read True")).toEqual(
+      [],
+    );
+    // (the System Idle Process: Windows tells nothing)
+    expect(lines[lines.length - 1]).toBe("none []");
+  }, 60000);
+
+  it("SRM's launch script reads paths as the helpers do", () => {
+    // (each has its own copy of the class; one PowerShell can't load two
+    // that differ)
+    const source = (file: string) => {
+      const text = fs
+        .readFileSync(
+          path.join(__dirname, "../../src/lib/launch-wrapper", file),
+          "utf8",
+        )
+        .replace(/\r\n/g, "\n");
+      const start = text.indexOf("public static class SrmProcessPath");
+      return text.slice(start, text.indexOf("'@", start));
+    };
+    expect(source("srm-launch.ps1")).toContain("QueryFullProcessImageName");
+    expect(source("srm-launch.ps1")).toBe(
+      source("scripts/launcher-helpers.ps1"),
+    );
+  });
+
   describe("the EA app's cloud sync after the game", () => {
     const oldLines = [
       "INFO (ProcessCoordinator::FsmHost::doSyncSaveDataBeforeGameOpen) Cloud Sync entry point pre game launch",

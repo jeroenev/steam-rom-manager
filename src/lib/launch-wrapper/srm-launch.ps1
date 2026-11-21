@@ -70,9 +70,62 @@ function Invoke-Stage([string]$stage, $steps) {
     }
 }
 
+# The path of a program ($Process, or the one with id $Id), also of one
+# running as administrator: Windows PowerShell reads Process.Path from the
+# program's modules, which it can't for those. None for a program Windows
+# won't tell about (a protected one, another user's). launcher-helpers.ps1
+# has the same (keep the two the same).
+$script:processPathError = $null
+function Get-ProcessPathById([int]$Id) {
+    If (!('SrmProcessPath' -as [type])) {
+        If ($script:processPathError) { Return $null }
+        Try {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SrmProcessPath {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "QueryFullProcessImageNameW")]
+    private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder path, ref uint size);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    public static string Get(int processId) {
+        IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process == IntPtr.Zero) return null;
+        try {
+            StringBuilder path = new StringBuilder(32768);
+            uint size = (uint)path.Capacity;
+            return QueryFullProcessImageName(process, 0, path, ref size) ? path.ToString(0, (int)size) : null;
+        } finally {
+            CloseHandle(process);
+        }
+    }
+}
+'@
+        } Catch {
+            # (e.g. where PowerShell may not compile code: only paths that
+            # Process.Path reads count then)
+            $script:processPathError = $_.Exception.Message
+            Write-Log "can't read the path of programs running as administrator: $($script:processPathError)"
+            Return $null
+        }
+    }
+    Return [SrmProcessPath]::Get($Id)
+}
+
+function Get-ProcessPath($Process) {
+    If ($Process.Path) { Return [string]$Process.Path }
+    Return Get-ProcessPathById $Process.Id
+}
+
 # The game's processes. With a game folder: this Windows session's programs
-# running from it (or, where the path can't be read, named like the game's
-# executable); another signed-in user's copy of the game isn't this
+# running from it (or, where the path can't be read at all, named like the
+# game's executable); another signed-in user's copy of the game isn't this
 # launch's. Without: the started process and every process it started,
 # followed through processes that have exited (Windows keeps a child's
 # parent id).
@@ -83,7 +136,8 @@ function Get-GameProcesses {
         $folder = [IO.Path]::GetFullPath([string]$Config.game.folder).TrimEnd('\') + '\'
         $exeName = If ($Config.game.exeName) { [IO.Path]::GetFileNameWithoutExtension([string]$Config.game.exeName) } Else { $null }
         Return @(Get-Process | Where-Object { $_.SessionId -eq $script:session } | Where-Object {
-            If ($_.Path) { $_.Path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $exeName -and $_.ProcessName -eq $exeName }
+            $path = Get-ProcessPath $_
+            If ($path) { $path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $exeName -and $_.ProcessName -eq $exeName }
         } | ForEach-Object { $_.Id })
     }
     $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId -ErrorAction SilentlyContinue)
