@@ -30,10 +30,10 @@ With SRM's **Offline mode** on, libraries are not fetched by themselves; the par
 
 ## Games left out
 
-A game installed through the store's own launcher is always left out (it is matched by the store's id for the game, or by its title): add installed games with the parser for that launcher. So is a game whose shortcut would be the same as one another parser adds (same program and title, so the same shortcut in Steam): that parser's shortcut is kept as it is. SRM looks where the launcher keeps its games by default, and where your parsers for it are set to look (for example the itch.io parser's app data folder).
+A game installed through the store's own launcher is always left out (it is matched by the store's id for the game, or by its title): add installed games with the parser for that launcher. On Linux, a game installed from this store through Heroic is left out too, unless its shortcut starts it through Heroic: SRM has no parser for Heroic's games, so that shortcut is kept, and starts the installed game. So is a game whose shortcut would be the same as one another parser adds (same program and title, so the same shortcut in Steam): that parser's shortcut is kept as it is. SRM looks where the launcher keeps its games by default, and where your parsers for it are set to look (for example the itch.io parser's app data folder).
 
 - **Leave out betas, demos and playtests** (on by default): titles naming a beta, demo, playtest or test server, as whole words ("Barony (Beta)", but not "Demon's Tilt").
-- **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match).
+- **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match). A game kept because Heroic installed it from this store stays.
 - **Leave out games Steam has installed** (on by default): a game Steam itself has installed, with the same title.
 
 A game the Store Account parser of another store also lists, with the same title, gets one shortcut, from the store that comes first in the store order in **Settings**, **Owned Games** (or one from every store, as set there).

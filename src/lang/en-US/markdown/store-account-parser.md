@@ -2,7 +2,7 @@
 
 This parser signs in to your account at a game store and adds every game the account owns but **hasn't installed** to Steam. Its shortcut installs the game: it opens the store's launcher on the game, so you can install it from Steam (for example in Steam's Game Mode on a Steam Deck).
 
-Games you have installed are not added by this parser: add those with the parser for the store's launcher (Epic, GOG Galaxy, Amazon Games, EA Desktop, Battle.net, itch.io, Legendary).
+Games you have installed are not added by this parser: add those with the parser for the store's launcher (Epic, GOG Galaxy, Amazon Games, EA Desktop, Battle.net, itch.io, Legendary). On Linux, a game you installed through Heroic is the exception: SRM has no parser for Heroic's games, so when this parser's shortcut starts the game through Heroic, it keeps that shortcut (see [Keeping the shortcut when you install the game](#keeping-the-shortcut-when-you-install-the-game)).
 
 Use one Store Account parser per store account. By default its games go into the Steam collection **Not installed**: Steam has no "not installed" state for a shortcut, so the collection is where that shows.
 
@@ -62,6 +62,8 @@ A search you set for a game on Add Games (**Fix match**, or a search title) is u
 A Steam shortcut's id is made from its program and its title. Where SRM has a parser for the store's launcher, a Store Account shortcut uses the program that parser uses when it **launches through the launcher** (for example PowerShell for Epic and EA, `GalaxyClient.exe` for GOG, `Amazon Games.exe`, `Battle.net.exe`). So once you install the game and that parser adds it, under the same title and with launching through the launcher turned on, it is the same shortcut: its artwork and exceptions stay, and this parser leaves the game out from then on.
 
 When the titles differ (the store's launcher can name a game differently from the store's account page), the installed game gets a new shortcut and the old one is removed.
+
+**Heroic (Linux)**: SRM has no parser for the games Heroic installs. A shortcut that goes through Heroic starts the game once Heroic has installed it, so this parser keeps it: the same shortcut, with its artwork and exceptions, now starts the installed game. It stays in this parser's Steam collection (**Not installed** by default), since the collection is the parser's, not the game's. A game Heroic installed whose shortcut would open the store page instead is left out, and SRM adds nothing for it. When Heroic's own **Add games to Steam automatically** is on, Heroic adds a second shortcut for the game: turn it off, or have this parser's shortcuts open the store page so that only Heroic's stays.
 
 ## Your sign-in and your privacy
 

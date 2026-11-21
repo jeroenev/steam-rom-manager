@@ -582,6 +582,47 @@ describe("Store Account parser (characterization)", () => {
     ]).toMatchSnapshot();
   });
 
+  it("Linux: a game installed through Heroic keeps its Heroic shortcut; with store pages it's left out", async () => {
+    // (Heroic installed The Witcher 3 from GOG; SRM has no Heroic parser)
+    const throughHeroic: InstalledGame = {
+      store: "gog",
+      id: "1207664643",
+      title: "The Witcher 3: Wild Hunt",
+      via: "heroic",
+    };
+    setStoreAccountEnvironment({
+      launchers: () => steamDeck,
+      installed: async (store) => [
+        ...(installed[store] ?? []),
+        ...(store === "gog" ? [throughHeroic] : []),
+      ],
+    });
+    const deck = await parse(config({}));
+    const witcher = deck.parsedConfigs[0].files.find(
+      (f: any) => f.titles.final === "The Witcher 3: Wild Hunt",
+    );
+    // The same shortcut as before the install (program and title): Heroic
+    // starts the installed game.
+    expect(witcher?.argumentString).toContain("heroic://launch/gog/1207664643");
+    // (a game installed from the store's own launcher is still left out)
+    expect(titles(deck)).not.toContain("Unreal Tournament 2004");
+
+    // A shortcut that opens the store page would not start it: left out.
+    const browser = await parse(config({ storeInstallWith: "browser" }));
+    expect(titles(browser)).not.toContain("The Witcher 3: Wild Hunt");
+    // On Windows (no Heroic), the same.
+    setStoreAccountEnvironment({
+      launchers: () => windows,
+      installed: async (store) => [
+        ...(installed[store] ?? []),
+        ...(store === "gog" ? [throughHeroic] : []),
+      ],
+    });
+    expect(titles(await parse(config({})))).not.toContain(
+      "The Witcher 3: Wild Hunt",
+    );
+  });
+
   it("not signed in, a store that comes later, a library never fetched: says which", async () => {
     await refresh.deleteAccount("gog");
     await expect(parse(config({}))).rejects.toThrow(
@@ -830,6 +871,30 @@ describe("gamesToAdd", () => {
       off,
     );
     expect(kept.map((g) => g.title)).toEqual(["Dead Space"]);
+  });
+
+  it("keeps a game installed through Heroic only where its shortcut starts it through Heroic, whatever another launcher has", () => {
+    const games = [
+      ownedGame("gog", "1", "Frostpunk"),
+      ownedGame("gog", "2", "Disco Elysium"),
+      ownedGame("gog", "3", "Portal"),
+    ];
+    const installed = {
+      sameStoreIds: new Set<string>(),
+      sameStoreTitles: new Set<string>(),
+      // (Frostpunk by its id, Disco Elysium by its title)
+      heroicIds: new Set(["1"]),
+      heroicTitles: new Set(["discoelysium"]),
+      // (Heroic's titles are among those of every launcher)
+      titles: new Set(["frostpunk", "discoelysium", "portal"]),
+    };
+    const filter = { ...off, skipInstalledElsewhere: true };
+    expect(
+      gamesToAdd(games, installed, new Set(), filter, () => true).map(
+        (g) => g.title,
+      ),
+    ).toEqual(["Frostpunk", "Disco Elysium"]);
+    expect(gamesToAdd(games, installed, new Set(), filter)).toEqual([]);
   });
 
   it("compares titles by their letters and digits", () => {

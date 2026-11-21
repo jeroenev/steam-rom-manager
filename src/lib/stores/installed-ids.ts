@@ -45,6 +45,10 @@ export interface InstalledGame {
   // The store's id, as in OwnedGame.id (EA: a content id; see eaInstalled).
   id: string;
   title?: string;
+  // Installed through Heroic (Linux). SRM has no parser for Heroic's games,
+  // so the Store Account parser keeps such a game when its shortcut starts
+  // it through Heroic.
+  via?: "heroic";
 }
 
 // The places the user's platform parsers are set to read (their overrides of
@@ -95,7 +99,12 @@ export async function readInstalledGames(
     (osType == "Linux" ? heroicConfigDirs(home) : []);
   const fromHeroic = (runner: HeroicRunner) =>
     heroicDirs.map((dir) =>
-      quietly(() => tagged(store, readHeroicInstalled(dir, runner))),
+      quietly(() =>
+        tagged(store, readHeroicInstalled(dir, runner)).map((game) => ({
+          ...game,
+          via: "heroic" as const,
+        })),
+      ),
     );
   // Reads each place once: the defaults and the parsers' own.
   const fromEach = (

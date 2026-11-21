@@ -79,6 +79,10 @@ describe("installed store ids", () => {
       id: "Bluegill",
       title: "DREDGE",
     });
+    // (Heroic's are marked: SRM has no parser for them)
+    expect(games.filter((g) => g.via === "heroic").map((g) => g.id)).toEqual([
+      "Sugar",
+    ]);
   });
 
   it("GOG: Galaxy's database and Heroic", async () => {
@@ -106,6 +110,8 @@ describe("installed store ids", () => {
     });
     expect(ids(games)).toEqual(["1207658924", "1207664663"]);
     expect(games.find((g) => g.id === "1207658924")?.title).toBe("Unreal Gold");
+    expect(games.find((g) => g.id === "1207658924")?.via).toBeUndefined();
+    expect(games.find((g) => g.id === "1207664663")?.via).toBe("heroic");
   });
 
   it("Amazon: Heroic's Nile lists, in both shapes", async () => {
@@ -133,8 +139,14 @@ describe("installed store ids", () => {
         store: "amazon",
         id: "amzn1.adg.product.1",
         title: "Fallout New Vegas",
+        via: "heroic",
       },
-      { store: "amazon", id: "amzn1.adg.product.2", title: "Morrowind" },
+      {
+        store: "amazon",
+        id: "amzn1.adg.product.2",
+        title: "Morrowind",
+        via: "heroic",
+      },
     ]);
   });
 

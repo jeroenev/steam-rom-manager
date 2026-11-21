@@ -154,11 +154,14 @@ export interface OwnedFilter {
 }
 
 // What's installed, for gamesToAdd: from this same store, its ids and
-// titles (normalizeTitle); from every launcher SRM knows, titles (only
-// needed with skipInstalledElsewhere).
+// titles (normalizeTitle), and apart from those the ids and titles of the
+// games installed through Heroic; from every launcher SRM knows, titles
+// (only needed with skipInstalledElsewhere).
 export interface InstalledForFilter {
   sameStoreIds: Set<string>;
   sameStoreTitles: Set<string>;
+  heroicIds?: Set<string>;
+  heroicTitles?: Set<string>;
   titles: Set<string>;
 }
 
@@ -166,27 +169,43 @@ export interface InstalledForFilter {
 // store, matched by its store id or its title, never does: the installed
 // game has its own (through the store's parser, whose launcher-mode
 // shortcut has the same program and, with the same title, the same app id).
-// Then, as set: betas, demos and playtests; games installed from any
-// launcher SRM knows (same title); and games Steam has installed itself
-// (same title).
+// A game installed through Heroic has no parser of its own: it keeps its
+// shortcut when `keepThroughHeroic` says the shortcut starts it through
+// Heroic (the same program and title, so the same shortcut, which now
+// starts the installed game), and is left out otherwise. Then, as set:
+// betas, demos and playtests; games installed from any launcher SRM knows
+// (same title; not for a game kept through Heroic, which is that install);
+// and games Steam has installed itself (same title).
 export function gamesToAdd(
   games: readonly OwnedGame[],
   installed: InstalledForFilter,
   steamTitles: Set<string>,
   filter: OwnedFilter,
+  keepThroughHeroic: (game: OwnedGame) => boolean = () => false,
 ): OwnedGame[] {
   return games.filter((game) => {
-    if (storeIds(game).some((id) => installed.sameStoreIds.has(id))) {
+    const ids = storeIds(game);
+    if (ids.some((id) => installed.sameStoreIds.has(id))) {
       return false;
     }
     const title = normalizeTitle(game.title);
     if (installed.sameStoreTitles.has(title)) {
       return false;
     }
+    const throughHeroic =
+      ids.some((id) => installed.heroicIds?.has(id)) ||
+      !!installed.heroicTitles?.has(title);
+    if (throughHeroic && !keepThroughHeroic(game)) {
+      return false;
+    }
     if (filter.skipPrereleases && isPrerelease(game.title)) {
       return false;
     }
-    if (filter.skipInstalledElsewhere && installed.titles.has(title)) {
+    if (
+      !throughHeroic &&
+      filter.skipInstalledElsewhere &&
+      installed.titles.has(title)
+    ) {
       return false;
     }
     if (filter.skipSteamInstalled && steamTitles.has(title)) {
@@ -354,7 +373,12 @@ export class StoreAccountParser implements GenericParser {
       skipInstalledElsewhere: inputs.storeSkipInstalledElsewhere !== false,
       skipSteamInstalled: inputs.storeSkipSteamInstalled !== false,
     };
-    const sameStore = await environment.installed(store, installedLocations);
+    const installedHere = await environment.installed(
+      store,
+      installedLocations,
+    );
+    const sameStore = installedHere.filter((game) => game.via !== "heroic");
+    const throughHeroic = installedHere.filter((game) => game.via === "heroic");
     // (a title of only signs matches nothing)
     const titlesOf = (games: InstalledGame[]) =>
       games
@@ -366,7 +390,7 @@ export class StoreAccountParser implements GenericParser {
       for (const other of STORE_KEYS) {
         const games =
           other === store
-            ? sameStore
+            ? installedHere
             : await environment.installed(other, installedLocations);
         for (const title of titlesOf(games)) {
           titles.add(title);
@@ -378,23 +402,26 @@ export class StoreAccountParser implements GenericParser {
       filter.skipSteamInstalled && directories?.length
         ? environment.steamTitles(path.resolve(directories[0], "..", ".."))
         : new Set<string>();
-    const games = gamesToAdd(
-      library.games,
-      {
-        sameStoreIds: sameStoreIdSet(store, sameStore),
-        sameStoreTitles,
-        titles,
-      },
-      steamTitles,
-      filter,
-    );
-
     const installWith: InstallWith = ["heroic", "browser"].includes(
       inputs.storeInstallWith,
     )
       ? inputs.storeInstallWith
       : "auto";
     const launchers = environment.launchers();
+    const games = gamesToAdd(
+      library.games,
+      {
+        sameStoreIds: sameStoreIdSet(store, sameStore),
+        sameStoreTitles,
+        heroicIds: sameStoreIdSet(store, throughHeroic),
+        heroicTitles: new Set(titlesOf(throughHeroic)),
+        titles,
+      },
+      steamTitles,
+      filter,
+      (game) => installTarget(game, installWith, launchers).via === "heroic",
+    );
+
     return {
       success: games.map((game) => {
         const target = installTarget(game, installWith, launchers);
