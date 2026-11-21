@@ -6,10 +6,12 @@ import { parserScript } from "./index";
 // start (Windows, launching via the launcher). SRM's launch script opens the
 // game's link, so the launcher starts inside the process tree Steam tracks
 // when it was closed, and waits while a program from the game's folder runs:
-// Steam shows the game as running exactly that long. The parser's scripts
-// note before the launch whether the launch starts the launcher, and close
-// it after the game if so (an open launcher is left alone). Based on BoilR's
-// launch-and-wait (https://github.com/PhilipK/BoilR).
+// Steam shows the game as running while it runs, plus the time the parser's
+// scripts take to close a launcher the launch started. Those note before the
+// launch whether the launch starts the launcher, and close it after the game
+// if so (an open launcher is left alone, and so is one that another game
+// still needs). Based on BoilR's launch-and-wait
+// (https://github.com/PhilipK/BoilR).
 
 export interface LauncherWaitOptions {
   // Also close an open launcher before the game, so that the launch starts

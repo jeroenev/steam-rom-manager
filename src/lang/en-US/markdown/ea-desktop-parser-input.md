@@ -16,11 +16,11 @@ That link only needs the game's id, so with this enabled SRM also adds games who
 
 Only applies when launching via EA Desktop. Without it, Steam gets the game's state wrong: it shows the game as stopped right away when the EA app was already open (so pressing Play starts it again), and as running until you quit the EA app when it wasn't.
 
-With this enabled, the game's shortcut runs SRM's launch script (see **Script wrapper**). It opens the game's link and waits until no program from the game's install folder runs, so Steam shows the game as running exactly as long as it runs. The EA app gets up to 10 minutes to start the game, since it may update the game or ask you to sign in first. What happens to the EA app depends on whether it was open:
+With this enabled, the game's shortcut runs SRM's launch script (see **Script wrapper**). It opens the game's link and waits until no program from the game's install folder runs, so Steam shows the game as running while it runs (and a few seconds after: SRM checks for 5 seconds that it's gone). The EA app gets up to 10 minutes to start the game, since it may update the game or ask you to sign in first. What happens to the EA app depends on whether it was open:
 
-- **The EA app was closed:** the launch starts it inside Steam, so the game gets the Steam overlay. After the game, SRM waits until the EA app has synced cloud saves (its log says when; at most a minute), then asks the EA app to quit. If it hasn't quit after 15 seconds, it is ended. A download started in the EA app during the game stops when it closes.
+- **The EA app was closed:** the launch starts it inside Steam, so the game gets the Steam overlay. After the game, SRM waits until the EA app has synced cloud saves (its log says when; at most a minute), then asks the EA app to quit. If it hasn't quit after 15 seconds, it is ended. Steam shows the game as running until then: usually 10 to 20 seconds after the game, at most about a minute and a half. A download started in the EA app during the game stops when it closes. If another game the EA app started still runs (one you started from the EA app, for example), the EA app stays open, and Steam shows this game as running until you quit the EA app.
 - **The EA app was open:** it takes the game over and stays open. The game shows as running for the right time, but gets no Steam overlay (see the next option).
-- If the game never starts, the EA app is left open.
+- If the game doesn't start within the 10 minutes (you cancel a sign-in or an update, for example), the EA app is left open. If the launch started it, Steam keeps showing the game as running until you quit the EA app from its tray icon (or press **Stop** in Steam, which ends it), because the EA app runs inside Steam. That includes after a game you then start from the EA app, which isn't closed for you.
 
 Turning this on or off changes the shortcut's executable (SRM's launch script instead of PowerShell), so the games get new app IDs: the next save replaces their shortcuts.
 
@@ -28,4 +28,4 @@ Turning this on or off changes the shortcut's executable (SRM's launch script in
 
 Only applies with **Wait for the game to exit**. Off by default.
 
-The Steam overlay only reaches the game when Steam started the EA app. With this enabled, an EA app that is open when you start a game is asked to quit first (and ended if it hasn't quit after 15 seconds), so that the launch starts it again and the game always gets the overlay. This stops any download in the EA app, and another EA game running at the time loses the EA app.
+The Steam overlay only reaches the game when Steam started the EA app. With this enabled, an EA app that is open when you start a game is asked to quit first (and ended if it hasn't quit after 15 seconds), so that the launch starts it again and the game gets the overlay. This stops any download in the EA app. While another game the EA app started runs, the EA app is left open instead, and the game gets no Steam overlay.

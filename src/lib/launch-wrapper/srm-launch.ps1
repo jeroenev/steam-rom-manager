@@ -113,6 +113,7 @@ Try {
     Invoke-Stage "pre-launch" $Config.preLaunch
 
     $started = $null
+    $startFailed = $False
     Try {
         $start = @{ FilePath = [string]$Config.file; PassThru = $True }
         If ($Config.arguments) { $start.ArgumentList = [string]$Config.arguments }
@@ -123,14 +124,17 @@ Try {
         If ($started) { $script:tracked[[int]$started.Id] = $True }
         Write-Log "started $($Config.file) $($Config.arguments)"
     } Catch {
+        # (e.g. a launcher link whose launcher is gone: nothing will start
+        # the game, so there's nothing to wait for)
+        $startFailed = $True
         Write-Log "could not start the game: $($_.Exception.Message)"
     }
 
     $running = $False
-    If ($Config.game -and $Config.game.folder) {
-        # The launcher starts the game: wait for it (3 minutes at most, or
-        # what the parser sets: a launcher may update the game or ask to
-        # sign in first) and for its start-up to settle.
+    If (!$startFailed -and $Config.game -and $Config.game.folder) {
+        # The launcher was started and starts the game: wait for it (3
+        # minutes at most, or what the parser sets: a launcher may update the
+        # game or ask to sign in first) and for its start-up to settle.
         $minutes = 3
         If ($Config.game.startTimeoutMinutes -gt 0) { $minutes = [double]$Config.game.startTimeoutMinutes }
         $timeout = (Get-Date).AddMinutes($minutes)

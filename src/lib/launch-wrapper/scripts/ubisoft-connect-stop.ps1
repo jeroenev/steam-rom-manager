@@ -6,9 +6,11 @@
 # sign-in).
 #   Ubisoft Connect logs no end of its cloud sync: it gets 5 seconds after
 #   the game (a save was uploaded within 2 seconds in testing). Then, unless
-#   the game runs again, its "Ubisoft Connect" windows are asked to close,
-#   which quits it while its close setting says so, and what is left is
-#   ended after 15 seconds.
+#   the game runs again or another game Ubisoft Connect started still runs
+#   (it wouldn't quit, and ending it would take that game's Ubisoft Connect
+#   away), its "Ubisoft Connect" windows are asked to close, which quits it
+#   while its close setting says so, and what is left is ended after 15
+#   seconds.
 #   Its setting is changed back once it has exited (it writes its settings
 #   when it exits); if it still runs, a later launch does it.
 # Based on BoilR's launch-and-wait (https://github.com/PhilipK/BoilR).
@@ -43,6 +45,8 @@ If (!(Test-Marker $RunDir 'ubisoft-game-started')) {
     If ($GraceSeconds -gt 0) { Start-Sleep -Milliseconds ([int]($GraceSeconds * 1000)) }
     If (Test-GameRunning $GameFolder) {
         Write-Host 'The game runs again: leaving Ubisoft Connect open'
+    } ElseIf (Test-LauncherGameRunning $ProcessName) {
+        Write-Host 'Another game Ubisoft Connect started still runs: leaving Ubisoft Connect open'
     } Else {
         # (asked only when that quits it; it would hide in the tray)
         $title = If (Test-SettingLine $SettingsFile $quit) { $WindowTitle } Else { '' }

@@ -7,8 +7,10 @@
 #   done: up to 10 seconds for the sync to start (games without cloud saves
 #   have none), then up to a minute for it to end. Asked to close during the
 #   sync, the EA app would show a dialog and stay open.
-#   Then, unless the game runs again, asks the EA app's "EA" windows to close
-#   (it quits cleanly), and ends what is left after 15 seconds.
+#   Then, unless the game runs again or another game the EA app started
+#   still runs (it wouldn't quit, and ending it would take that game's EA app
+#   away), asks the EA app's "EA" windows to close (it quits cleanly), and
+#   ends what is left after 15 seconds.
 # Based on BoilR's launch-and-wait (https://github.com/PhilipK/BoilR).
 param (
     [string]$GameFolder, # the game's install folder
@@ -69,4 +71,8 @@ If (Test-GameRunning $GameFolder $ExeName) {
     Exit 0
 }
 $folders = @((Get-Marker $RunDir 'ea-app-folders') -split "`n" | Where-Object { $_ })
+If (Test-LauncherGameRunning $ProcessName $folders $except) {
+    Write-Host 'Another game the EA app started still runs: leaving the EA app open'
+    Exit 0
+}
 Close-Launcher -ProcessName $ProcessName -Title $WindowTitle -Seconds $CloseSeconds -Folders $folders -Except $except

@@ -25,6 +25,15 @@ function Remove-Marker([string]$Folder, [string]$Name) {
     Remove-Item -LiteralPath (Join-Path $Folder $Name) -Force -ErrorAction SilentlyContinue
 }
 
+# The programs of this Windows session (named $Name, or all). Another
+# signed-in user's launcher or game isn't this launch's: it can't be asked
+# to close, nor ended, and its launcher doesn't take this user's game over.
+function Get-SessionProcesses([string]$Name) {
+    $session = [Diagnostics.Process]::GetCurrentProcess().SessionId
+    $all = If ($Name) { Get-Process -Name $Name -ErrorAction SilentlyContinue } Else { Get-Process }
+    Return @($all | Where-Object { $_.SessionId -eq $session })
+}
+
 # Whether a program from the game's folder (or a folder below it) runs. A
 # program whose path can't be read (one running as administrator) counts
 # when it's named like the game's executable.
@@ -32,20 +41,20 @@ function Test-GameRunning([string]$GameFolder, [string]$ExeName) {
     If (!$GameFolder) { Return $False }
     $folder = [IO.Path]::GetFullPath($GameFolder).TrimEnd('\') + '\'
     $name = If ($ExeName) { [IO.Path]::GetFileNameWithoutExtension($ExeName) } Else { $null }
-    Return [bool]@(Get-Process | Where-Object {
+    Return [bool]@(Get-SessionProcesses | Where-Object {
         If ($_.Path) { $_.Path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $name -and $_.ProcessName -eq $name }
     }).Count
 }
 
 function Test-LauncherRunning([string]$ProcessName) {
-    Return [bool]@(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue).Count
+    Return [bool]@(Get-SessionProcesses $ProcessName).Count
 }
 
 # The folders the launcher's main program ($ProcessName) runs from, as
 # Windows reports them (through the real folder where the installed one is a
 # link, as the EA app's is).
 function Get-LauncherFolders([string]$ProcessName) {
-    Return @(Get-Process -Name $ProcessName -ErrorAction SilentlyContinue | Where-Object { $_.Path } |
+    Return @(Get-SessionProcesses $ProcessName | Where-Object { $_.Path } |
         ForEach-Object { [IO.Path]::GetDirectoryName($_.Path) } | Sort-Object -Unique)
 }
 
@@ -53,11 +62,38 @@ function Get-LauncherFolders([string]$ProcessName) {
 # one of $Folders. Not those in folders below them, where games can be
 # installed, nor those named in $Except (the EA app's Windows service).
 function Get-LauncherProcesses([string]$ProcessName, [string[]]$Folders, [string[]]$Except) {
-    Return @(Get-Process | Where-Object {
+    Return @(Get-SessionProcesses | Where-Object {
         ($Except -notcontains $_.ProcessName) -and (
             ($_.ProcessName -eq $ProcessName) -or
             ($_.Path -and ($Folders -contains [IO.Path]::GetDirectoryName($_.Path))))
     })
+}
+
+# Whether a program that the launcher started still runs from outside the
+# launcher's own folders: another game, started from the launcher's window or
+# by another launch that found the launcher open. The launcher won't close
+# then (the EA app says "Close your game, first", Ubisoft Connect aborts its
+# shutdown), and ending it would take that game's launcher away (and its
+# cloud sync). The launcher's own programs are those in its folders or below
+# them, but not below a "games" folder there (where Ubisoft Connect installs
+# games by default); programs in Windows' folder (consoles, error reports)
+# don't count either. One whose path can't be read (running as
+# administrator) counts: better to leave the launcher open.
+function Test-LauncherGameRunning([string]$ProcessName, [string[]]$Folders = @(), [string[]]$Except = @()) {
+    $Folders = @(@(Get-LauncherFolders $ProcessName) + $Folders | Where-Object { $_ } | Sort-Object -Unique)
+    $ids = @(Get-LauncherProcesses $ProcessName $Folders $Except | ForEach-Object { $_.Id })
+    If (!$ids.Count) { Return $False }
+    $windows = [Environment]::GetFolderPath('Windows').TrimEnd('\') + '\'
+    $own = @($Folders | ForEach-Object { $_.TrimEnd('\') + '\' })
+    Return [bool]@(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, ExecutablePath -ErrorAction SilentlyContinue | Where-Object {
+        If (($ids -notcontains [int]$_.ParentProcessId) -or ($ids -contains [int]$_.ProcessId)) { Return $False }
+        $path = [string]$_.ExecutablePath
+        If (!$path) { Return $True }
+        If ($path.StartsWith($windows, 'OrdinalIgnoreCase')) { Return $False }
+        Return !@($own | Where-Object {
+            $path.StartsWith($_, 'OrdinalIgnoreCase') -and !$path.StartsWith($_ + 'games\', 'OrdinalIgnoreCase')
+        }).Count
+    }).Count
 }
 
 # Sends a close request (WM_CLOSE) to the top-level windows titled $Title of

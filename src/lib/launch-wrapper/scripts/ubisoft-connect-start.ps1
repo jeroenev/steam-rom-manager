@@ -15,9 +15,10 @@
 #     marker in the launch-wrappers folder remembers the change until it's
 #     undone, should a launch be cut short (Steam's Stop ends this script).
 #     With -Restart, an open Ubisoft Connect is closed first, so the game
-#     always gets the overlay (this stops its downloads, and another Ubisoft
-#     game running at the time loses it); not when this game already runs.
-#     It's ended, unless its setting lets a close request quit it.
+#     always gets the overlay (this stops its downloads); not when this game
+#     already runs, nor while another game Ubisoft Connect started runs (it
+#     would lose Ubisoft Connect). It's ended, unless its setting lets a
+#     close request quit it.
 #   -Mark (post-launch): notes that the game started.
 # Based on BoilR's launch-and-wait (https://github.com/PhilipK/BoilR).
 param (
@@ -53,6 +54,10 @@ If (Test-LauncherRunning $ProcessName) {
     }
     If (Test-GameRunning $GameFolder) {
         Write-Host 'The game already runs: leaving Ubisoft Connect open'
+        Exit 0
+    }
+    If (Test-LauncherGameRunning $ProcessName) {
+        Write-Host 'Another game Ubisoft Connect started runs: leaving Ubisoft Connect open (no Steam overlay)'
         Exit 0
     }
     Write-Host 'Closing the open Ubisoft Connect, so that this launch starts it (Steam overlay)'

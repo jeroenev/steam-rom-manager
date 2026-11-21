@@ -15,7 +15,10 @@ import {
   writeWrapperFile,
   wrapperFile,
 } from "../../src/lib/launch-wrapper";
-import { eaWaitForExitWrapper } from "../../src/lib/launch-wrapper/launchers";
+import {
+  eaWaitForExitWrapper,
+  ubisoftWaitForExitWrapper,
+} from "../../src/lib/launch-wrapper/launchers";
 import { LaunchScript } from "../../src/models";
 import { tempDir } from "../helpers/fixtures";
 
@@ -66,22 +69,20 @@ const newDir = (name: string) => {
 };
 const markers = (dir: string) => fs.readdirSync(dir).sort();
 
+const system32 = path.join(process.env.SystemRoot || "C:\\Windows", "System32");
+// A copy of a program of Windows' at <folder>\<name>.exe.
+function copyProgram(program: string, folder: string, name: string) {
+  fs.mkdirSync(folder, { recursive: true });
+  const exe = path.join(folder, `${name}.exe`);
+  if (!fs.existsSync(exe)) fs.copyFileSync(path.join(system32, program), exe);
+  return exe;
+}
+
 // A program that keeps running for a while: ping.exe, copied to
 // <folder>\<name>.exe.
 const programs: ChildProcess[] = [];
 function startProgram(folder: string, name: string) {
-  fs.mkdirSync(folder, { recursive: true });
-  const exe = path.join(folder, `${name}.exe`);
-  if (!fs.existsSync(exe)) {
-    fs.copyFileSync(
-      path.join(
-        process.env.SystemRoot || "C:\\Windows",
-        "System32",
-        "PING.EXE",
-      ),
-      exe,
-    );
-  }
+  const exe = copyProgram("PING.EXE", folder, name);
   const child = spawn(exe, ["-n", "300", "127.0.0.1"], {
     stdio: "ignore",
     windowsHide: true,
@@ -98,10 +99,60 @@ const running = (child: ChildProcess) => {
   }
 };
 
+// Programs that programs here started (no handle to end them by): ended
+// by name after the tests.
+const startedByOthers: string[] = [];
+// A launcher that started a program and waits for it (a game it started):
+// cmd.exe copied to <folder>\<name>.exe, running a copy of ping.exe at
+// <childFolder>\<child>.exe.
+function startLauncherWithChild(
+  folder: string,
+  name: string,
+  childFolder: string,
+  child: string,
+) {
+  const exe = copyProgram("cmd.exe", folder, name);
+  const childExe = copyProgram("PING.EXE", childFolder, child);
+  startedByOthers.push(child);
+  const launcher = spawn(exe, ["/c", childExe, "-n", "300", "127.0.0.1"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  programs.push(launcher);
+  return launcher;
+}
+// How many programs of this name run.
+const count = (name: string) =>
+  Number(
+    spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        `@(Get-Process '${name}' -ErrorAction SilentlyContinue).Count`,
+      ],
+      { encoding: "utf8" },
+    ).stdout.trim(),
+  );
+// Waits up to 10 seconds for a program of this name to run.
+async function started(name: string) {
+  for (let i = 0; i < 50 && !count(name); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  expect(count(name)).toBe(1);
+}
+
 describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
   beforeAll(() => installLaunchScripts());
   afterAll(() => {
     for (const child of programs) child.kill();
+    if (startedByOthers.length) {
+      spawnSync("powershell.exe", [
+        "-NoProfile",
+        "-Command",
+        `Stop-Process -Name ${startedByOthers.map((name) => `'${name}'`).join(",")} -Force -ErrorAction SilentlyContinue`,
+      ]);
+    }
     // (a moment for the copies of ping.exe to go)
     spawnSync("powershell.exe", ["-NoProfile", "-Command", "Start-Sleep 1"]);
     fs.rmSync(root, { recursive: true, force: true });
@@ -461,7 +512,219 @@ describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
       ]);
       expect(fs.readFileSync(file, "utf8")).toBe(`misc:\n  ${quit}\n`);
     }, 90000);
+
+    it("with -Restart, an open EA app is closed before the launch (never its service), unless the game already runs", () => {
+      const folder = newDir("EA Desktop");
+      const game = newDir("Game");
+      const opts = (runDir: string) => [
+        "-GameFolder",
+        game,
+        "-ExeName",
+        "srmtestrestarteagame.exe",
+        "-Restart",
+        "-Log",
+        path.join(folder, "no-such.log"),
+        "-ProcessName",
+        "srmtestrestartea",
+        "-CloseSeconds",
+        "5",
+        "-RunDir",
+        runDir,
+      ];
+      const main = startProgram(folder, "srmtestrestartea");
+      const helper = startProgram(folder, "srmtestrestarteahelper");
+      // (in the same folder: ended too, were it not spared by its name)
+      const service = startProgram(folder, "EABackgroundService");
+      const gameProgram = startProgram(
+        path.join(game, "bin"),
+        "srmtestrestarteagame",
+      );
+      let runDir = newDir("run");
+      expect(run("ea-app-start.ps1", opts(runDir)).output).toContain(
+        "The game already runs",
+      );
+      expect(running(main)).toBe(true);
+      expect(running(helper)).toBe(true);
+      expect(running(service)).toBe(true);
+      expect(markers(runDir)).toEqual([]);
+
+      gameProgram.kill();
+      runDir = newDir("run");
+      const start = run("ea-app-start.ps1", opts(runDir));
+      expect(start.output).not.toContain("Could not ask");
+      expect(start.output).toContain("Ending the launcher (2 programs)");
+      expect(start.output).toContain("This launch starts the EA app");
+      expect(running(main)).toBe(false);
+      expect(running(helper)).toBe(false);
+      expect(running(service)).toBe(true);
+      expect(markers(runDir)).toEqual(["ea-app-started"]);
+    }, 90000);
+
+    describe("a launcher that another game it started still needs", () => {
+      it("the EA app: left open after the game, and not restarted before it", async () => {
+        const folder = newDir("busy-ea");
+        const launcher = startLauncherWithChild(
+          folder,
+          "srmtestbusyea",
+          newDir("other-game"),
+          "srmtestbusyeagame",
+        );
+        await started("srmtestbusyeagame");
+        const game = newDir("game");
+        const opts = (runDir: string) => [
+          "-GameFolder",
+          game,
+          "-Log",
+          path.join(folder, "no-such.log"),
+          "-ProcessName",
+          "srmtestbusyea",
+          "-CloseSeconds",
+          "2",
+          "-RunDir",
+          runDir,
+        ];
+
+        let runDir = newDir("run");
+        for (const marker of ["ea-app-started", "ea-game-started"]) {
+          fs.writeFileSync(path.join(runDir, marker), "");
+        }
+        fs.writeFileSync(path.join(runDir, "ea-log-length"), "0");
+        const stop = run("ea-app-stop.ps1", [
+          "-SyncStartSeconds",
+          "0.5",
+          ...opts(runDir),
+        ]);
+        expect(stop.output).toContain(
+          "Another game the EA app started still runs: leaving the EA app open",
+        );
+        expect(stop.output).not.toContain("Ending the launcher");
+        expect(running(launcher)).toBe(true);
+        expect(count("srmtestbusyeagame")).toBe(1);
+
+        runDir = newDir("run");
+        const start = run("ea-app-start.ps1", ["-Restart", ...opts(runDir)]);
+        expect(start.output).toContain(
+          "Another game the EA app started runs: leaving the EA app open",
+        );
+        expect(running(launcher)).toBe(true);
+        expect(markers(runDir)).toEqual([]);
+      }, 90000);
+
+      it("not the EA app's own programs (in its folder or below it): it's closed", async () => {
+        const folder = newDir("own-ea");
+        const launcher = startLauncherWithChild(
+          folder,
+          "srmtestownea",
+          path.join(folder, "legacyPM"),
+          "srmtestowneahelper",
+        );
+        await started("srmtestowneahelper");
+        const runDir = newDir("run");
+        for (const marker of ["ea-app-started", "ea-game-started"]) {
+          fs.writeFileSync(path.join(runDir, marker), "");
+        }
+        const stop = run("ea-app-stop.ps1", [
+          "-GameFolder",
+          newDir("game"),
+          "-Log",
+          path.join(folder, "no-such.log"),
+          "-SyncStartSeconds",
+          "0",
+          "-ProcessName",
+          "srmtestownea",
+          "-CloseSeconds",
+          "5",
+          "-RunDir",
+          runDir,
+        ]);
+        expect(stop.output).not.toContain("Another game");
+        expect(stop.output).toContain("Ending the launcher (1 programs)");
+        expect(running(launcher)).toBe(false);
+      }, 90000);
+
+      it("Ubisoft Connect (a game in its games folder): left open after the game, and not restarted before it", async () => {
+        const folder = newDir("busy-ubisoft");
+        const launcher = startLauncherWithChild(
+          folder,
+          "srmtestbusyupc",
+          path.join(folder, "games", "Other Game"),
+          "srmtestbusyubigame",
+        );
+        await started("srmtestbusyubigame");
+        const file = path.join(newDir("settings"), "settings.yaml");
+        fs.writeFileSync(file, `misc:\r\n  ${quit}\r\n`);
+        const opts = (runDir: string) => [
+          "-GameFolder",
+          newDir("game"),
+          "-SettingsFile",
+          file,
+          "-StateDir",
+          newDir("state"),
+          "-ProcessName",
+          "srmtestbusyupc",
+          "-CloseSeconds",
+          "2",
+          "-RunDir",
+          runDir,
+        ];
+
+        let runDir = newDir("run");
+        for (const marker of [
+          "ubisoft-connect-started",
+          "ubisoft-game-started",
+        ]) {
+          fs.writeFileSync(path.join(runDir, marker), "");
+        }
+        const stop = run("ubisoft-connect-stop.ps1", [
+          "-GraceSeconds",
+          "0",
+          ...opts(runDir),
+        ]);
+        expect(stop.output).toContain(
+          "Another game Ubisoft Connect started still runs: leaving Ubisoft Connect open",
+        );
+        expect(stop.output).not.toContain("Ending the launcher");
+        expect(running(launcher)).toBe(true);
+        expect(count("srmtestbusyubigame")).toBe(1);
+
+        runDir = newDir("run");
+        const start = run("ubisoft-connect-start.ps1", [
+          "-Restart",
+          ...opts(runDir),
+        ]);
+        expect(start.output).toContain(
+          "Another game Ubisoft Connect started runs: leaving Ubisoft Connect open",
+        );
+        expect(running(launcher)).toBe(true);
+        expect(markers(runDir)).toEqual([]);
+      }, 90000);
+    });
   });
+
+  it("only counts programs of this Windows session (not another signed-in user's)", () => {
+    // A program that runs only in other sessions (services.exe, in session
+    // 0, when the tests run in a user's session). Looked at only: never
+    // closed.
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-Command",
+        [
+          `. '${parserScript("launcher-helpers.ps1")}'`,
+          "$me = [Diagnostics.Process]::GetCurrentProcess().SessionId",
+          "$other = @(Get-Process | Group-Object ProcessName | Where-Object { !@($_.Group | Where-Object { $_.SessionId -eq $me }).Count } | ForEach-Object { $_.Name })",
+          "$name = If ($other -contains 'services') { 'services' } Else { $other | Select-Object -First 1 }",
+          "If (!$name) { 'none' } Else { '{0} {1} {2}' -f $name, (Test-LauncherRunning $name), @(Get-LauncherProcesses $name @() @()).Count }",
+        ].join("; "),
+      ],
+      { encoding: "utf8" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    const out = result.stdout.trim();
+    // (none on a machine with a single session: nothing to show then)
+    if (out !== "none") expect(out).toMatch(/^\S+ False 0$/);
+  }, 60000);
 
   describe("the EA app's cloud sync after the game", () => {
     const oldLines = [
@@ -649,6 +912,99 @@ describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
     );
     expect(left.stdout.trim()).toBe("0");
   }, 120000);
+
+  it("through SRM's launch script: a game that never starts leaves the launcher open, and its wait is the parser's", async () => {
+    // The launch starts only the "launcher" (a copy of ping.exe): nothing
+    // ever runs from the game's folder.
+    const launcherExe = copyProgram(
+      "PING.EXE",
+      newDir("Ubisoft Game Launcher"),
+      "srmtestneverupc",
+    );
+    startedByOthers.push("srmtestneverupc");
+    const gameDir = newDir("Game Folder");
+    const launch = path.join(newDir("launch"), "launch.cmd");
+    fs.writeFileSync(
+      launch,
+      `@echo off\r\nstart "" /b "${launcherExe}" -n 120 127.0.0.1 >nul\r\n`,
+    );
+    const file = path.join(newDir("settings"), "settings.yaml");
+    fs.writeFileSync(file, `misc:\r\n  ${hide}\r\n`);
+    const state = newDir("state");
+
+    // Ubisoft Connect's wrapper, its launch replaced, its scripts pointed
+    // at the fake launcher and temporary files, and its wait for the game
+    // cut to 3 seconds.
+    const parser = ubisoftWaitForExitWrapper("srm.test", gameDir);
+    const fake = (steps: LaunchScript[], ...more: string[]) =>
+      steps.map((step) => ({
+        ...step,
+        args: [
+          ...step.args,
+          "-SettingsFile",
+          file,
+          "-StateDir",
+          state,
+          "-ProcessName",
+          "srmtestneverupc",
+          ...more,
+        ],
+      }));
+    await installLaunchScripts();
+    await writeWrapperFile("33333333", "789", {
+      title: "Ubisoft Never Game",
+      wrapper: makeLaunchWrapper('"C:\\unused.exe"', undefined, {
+        ...parser,
+        launch: { file: launch },
+        game: { ...parser.game, startTimeoutMinutes: 0.05 },
+        preLaunch: fake(parser.preLaunch),
+        postLaunch: fake(parser.postLaunch),
+        postExit: fake(parser.postExit, "-GraceSeconds", "0"),
+      }),
+      launchOptions: "",
+      startInDirectory: "",
+    });
+    const began = Date.now();
+    const result = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        wrapperFile("33333333", "789"),
+      ],
+      // (the default wait, 3 minutes, would end it)
+      { encoding: "utf8", timeout: 120000 },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect((Date.now() - began) / 1000).toBeLessThan(60);
+
+    const log = fs
+      .readFileSync(launchLog(), "utf8")
+      .split(/\r?\n/)
+      .filter((line) => line.includes("[Ubisoft Never Game]"))
+      .join("\n");
+    for (const step of [
+      "This launch starts Ubisoft Connect; it is closed after the game",
+      "the game didn't start; skipping post-launch scripts",
+      "The game did not start: leaving Ubisoft Connect open",
+      "stays until a later launch",
+    ]) {
+      expect(log).toContain(step);
+    }
+    expect(log).not.toContain("game started");
+    expect(log).not.toContain("Ending the launcher");
+    expect(log).not.toContain("failed");
+    expect(count("srmtestneverupc")).toBe(1);
+    expect(fs.readFileSync(file, "utf8")).toBe(`misc:\r\n  ${quit}\r\n`);
+    expect(
+      fs.existsSync(
+        path.join(state, "ubisoft-connect-closebehavior-changed.txt"),
+      ),
+    ).toBe(true);
+  }, 120000);
+
   it("does nothing when not run by SRM's launch script", () => {
     for (const script of [
       "ea-app-start.ps1",

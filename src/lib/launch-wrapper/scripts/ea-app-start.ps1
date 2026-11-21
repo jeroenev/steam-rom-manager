@@ -7,8 +7,8 @@
 # game over outside Steam's tree (no overlay) and is left alone.
 #   (pre-launch): notes whether this launch starts the EA app. With -Restart,
 #     an open EA app is closed first, so the game always gets the overlay
-#     (this stops its downloads, and another EA game running at the time
-#     loses it); not when this game already runs.
+#     (this stops its downloads); not when this game already runs, nor while
+#     another game the EA app started runs (it would lose the EA app).
 #   -Mark (post-launch): notes that the game started, and how long the EA
 #     app's log is: only what it logs after that counts for the cloud sync
 #     after the game.
@@ -47,6 +47,10 @@ If (Test-LauncherRunning $ProcessName) {
     }
     If (Test-GameRunning $GameFolder $ExeName) {
         Write-Host 'The game already runs: leaving the EA app open'
+        Exit 0
+    }
+    If (Test-LauncherGameRunning $ProcessName @() $except) {
+        Write-Host 'Another game the EA app started runs: leaving the EA app open (no Steam overlay)'
         Exit 0
     }
     Write-Host 'Closing the open EA app, so that this launch starts it (Steam overlay)'
