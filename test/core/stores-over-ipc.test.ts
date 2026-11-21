@@ -303,8 +303,9 @@ describe("store accounts over IPC", () => {
       humble: { window: true, paste: true },
       itch: { window: false, paste: true },
     });
-    // The instructions come in the UI's language, one set per store.
-    for (const store of ["epic", "amazon", "humble"]) {
+    // The instructions come in the UI's language (langStrings only), one
+    // set per store that signs in by a paste.
+    for (const store of STORE_KEYS.filter((key) => ways[key].paste)) {
       const paste = service.status(store).paste!;
       expect(paste.instructions).not.toBe("");
       expect(paste.placeholder).not.toBe("");

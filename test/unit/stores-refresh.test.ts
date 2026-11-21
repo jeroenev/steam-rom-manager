@@ -71,8 +71,6 @@ function fakeClient(
       manual: {
         kind: "paste",
         url: "https://store.example/login",
-        instructions: "Paste it",
-        placeholder: "code",
       },
       state: { verifier: Math.random().toString() },
     }),

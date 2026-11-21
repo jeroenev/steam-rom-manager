@@ -170,10 +170,6 @@ export function beginLogin(): PendingLogin {
       kind: "paste",
       // (tied to this login: its challenge goes with the state's verifier)
       url: startUrl,
-      instructions:
-        "Sign in to Amazon in your browser. When it lands on the Amazon home page, copy the full address from the address bar and paste it here.",
-      placeholder:
-        "https://www.amazon.com/?openid.assoc_handle=...&openid.oa2.authorization_code=...",
     },
     // Amazon's sign-in page for the Amazon Games app expects the app's own
     // window (BoilR's login window used it).

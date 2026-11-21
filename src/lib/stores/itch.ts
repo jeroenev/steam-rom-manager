@@ -97,9 +97,6 @@ export function beginLogin(): PendingLogin {
     manual: {
       kind: "paste",
       url: API_KEYS_URL,
-      instructions:
-        'Sign in to itch.io in your browser and open your API keys page (Settings > API keys). Click "Generate new API key", then "View" next to the new key, and paste the key here. You can revoke it on the same page at any time.',
-      placeholder: "itch.io API key",
     },
     state: {},
   };

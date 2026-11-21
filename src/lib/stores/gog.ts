@@ -117,10 +117,6 @@ export function beginLogin(): PendingLogin {
     manual: {
       kind: "paste",
       url: startUrl,
-      instructions:
-        "Sign in to GOG in your browser. When the page turns blank and its address starts with embed.gog.com/on_login_success, copy the whole address from the address bar and paste it here.",
-      placeholder:
-        "https://embed.gog.com/on_login_success?origin=client&code=...",
     },
     state: {},
   };

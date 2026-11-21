@@ -138,10 +138,9 @@ export type ManualLogin =
   | { kind: "unsupported" }
   | {
       kind: "paste";
-      // The page to open in the browser.
+      // The page to open in the browser. (What to paste, in the UI's
+      // language, is in langStrings: stores.paste.)
       url: string;
-      instructions: string;
-      placeholder: string;
     };
 
 // Everything a host needs to run a login, plus the state the store needs to

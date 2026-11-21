@@ -253,9 +253,6 @@ export function beginLogin(): PendingLogin {
     manual: {
       kind: "paste",
       url: LOGIN_URL,
-      instructions:
-        "Sign in to humblebundle.com in your browser and open your library. Then open the developer tools (F12), go to Network, reload the page, select the request for library, and copy the value of its Cookie request header. Paste it here. It is your login, so do not share it.",
-      placeholder: "Cookie header of www.humblebundle.com",
     },
     // The one every request sends (StoreHttp): Cloudflare, in front of the
     // site, ties what it hands the window to its user agent.

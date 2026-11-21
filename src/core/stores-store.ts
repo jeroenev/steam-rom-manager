@@ -1,5 +1,6 @@
 import {
   AccountStatus,
+  ManualLogin,
   STORE_NAMES,
   StoreKey,
   accountStatus,
@@ -27,8 +28,9 @@ import { SettingsStore } from "./settings-store";
 
 const HOUR_MS = 60 * 60 * 1000;
 
-// A store account as the parser editor shows it.
-export interface StoreAccountView extends AccountStatus {
+// A store account as the parser editor shows it (how to paste a sign-in
+// is in `paste`).
+export interface StoreAccountView extends Omit<AccountStatus, "manual"> {
   // This SRM fetches this store's library (the app does; its command line
   // only some).
   canRefresh: boolean;
@@ -91,7 +93,7 @@ export class StoresStore {
 
   status(store: string): StoreAccountView {
     const key = this.key(store);
-    const status = accountStatus(key);
+    const { manual, ...status } = accountStatus(key);
     const host = getStoreHost();
     let secretsWarning = false;
     try {
@@ -104,7 +106,7 @@ export class StoresStore {
       canRefresh: hostRefreshes(host, key),
       windowLogin:
         status.available && status.webviewLogin && !!host.openLoginWindow,
-      paste: status.available ? this.pasteLogin(key, status) : null,
+      paste: status.available ? this.pasteLogin(key, manual) : null,
       secretsWarning,
     };
   }
@@ -133,7 +135,7 @@ export class StoresStore {
   // ties its sign-in page to the sign-in in progress).
   beginLogin(store: string): PasteLogin | null {
     const key = this.key(store);
-    return this.pasteLogin(key, accountStatus(key), true);
+    return this.pasteLogin(key, pendingLogin(key).manual);
   }
 
   // Signs in with SRM's sign-in window, then fetches the games. Returns what
@@ -255,23 +257,20 @@ export class StoresStore {
     }
   }
 
-  private pasteLogin(
-    store: StoreKey,
-    status: AccountStatus,
-    start = false,
-  ): PasteLogin | null {
-    const manual = start ? pendingLogin(store).manual : status.manual;
+  // What to paste is only in langStrings (stores.paste), in the UI's
+  // language: a store that signs in by a paste needs its entry there.
+  private pasteLogin(store: StoreKey, manual: ManualLogin): PasteLogin | null {
     if (manual.kind !== "paste") {
       return null;
     }
     const paste = APP.lang.stores.paste as {
-      instructions: Record<string, string>;
-      placeholder: Record<string, string>;
+      instructions: Record<string, string | undefined>;
+      placeholder: Record<string, string | undefined>;
     };
     return {
       url: manual.url,
-      instructions: paste.instructions[store] || manual.instructions,
-      placeholder: paste.placeholder[store] || manual.placeholder,
+      instructions: paste.instructions[store] ?? "",
+      placeholder: paste.placeholder[store] ?? "",
     };
   }
 

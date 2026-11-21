@@ -155,9 +155,6 @@ export function beginLogin(): PendingLogin {
     manual: {
       kind: "paste",
       url: startUrl,
-      instructions:
-        'Sign in to Epic Games in your browser. Epic then shows a page of text containing "authorizationCode". Copy the code after it (or all of the text) and paste it here. The code works for a few minutes only.',
-      placeholder: "authorizationCode",
     },
     userAgent: LOGIN_USER_AGENT,
     state: {},
