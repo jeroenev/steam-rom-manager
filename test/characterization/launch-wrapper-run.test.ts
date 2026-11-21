@@ -167,6 +167,78 @@ describe("launch script", () => {
     120000,
   );
 
+  // (Another signed-in user playing the same game from a shared library: their
+  // copy, named like the game's executable but with a path this user can't
+  // read, isn't this launch's game.)
+  it.runIf(windows)(
+    "only counts programs of this Windows session as the game",
+    async () => {
+      // A program that runs only in other sessions (services.exe, in session
+      // 0, when the tests run in a user's session). Looked at only.
+      const other = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-Command",
+          [
+            "$me = [Diagnostics.Process]::GetCurrentProcess().SessionId",
+            "$other = @(Get-Process | Group-Object ProcessName | Where-Object { !@($_.Group | Where-Object { $_.SessionId -eq $me }).Count } | ForEach-Object { $_.Name })",
+            "If ($other -contains 'services') { 'services' } Else { $other | Select-Object -First 1 }",
+          ].join("; "),
+        ],
+        { encoding: "utf8" },
+      );
+      expect(other.status, other.stderr).toBe(0);
+      const name = other.stdout.trim();
+      // (none on a machine with a single session: nothing to show then)
+      if (!name) return;
+
+      const root = tempDir("launch-session");
+      const gameFolder = path.join(root, "Game");
+      fs.mkdirSync(gameFolder);
+      const launch = path.join(root, "launch.cmd");
+      fs.writeFileSync(launch, "@echo off\r\n");
+      await installLaunchScripts();
+      await writeWrapperFile("11111111", "127", {
+        title: "Other Session Game",
+        wrapper: makeLaunchWrapper('"C:\\unused.exe"', undefined, {
+          launch: { file: launch },
+          game: {
+            folder: gameFolder,
+            exeName: `${name}.exe`,
+            startTimeoutMinutes: 0.05,
+          },
+        }),
+        launchOptions: "",
+        startInDirectory: "",
+      });
+      const run = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          wrapperFile("11111111", "127"),
+        ],
+        // (counted as the game, the other session's program would be
+        // waited for until it exits)
+        { encoding: "utf8", timeout: 60000 },
+      );
+      expect(run.status, run.stderr).toBe(0);
+      const log = fs
+        .readFileSync(launchLog(), "utf8")
+        .split(/\r?\n/)
+        .filter((line) => line.includes("[Other Session Game]"))
+        .join("\n");
+      expect(log).toContain(
+        "the game didn't start; skipping post-launch scripts",
+      );
+      expect(log).not.toContain("game started");
+    },
+    120000,
+  );
+
   // A game found by its folder (as the EA app's, Ubisoft Connect's and Epic's
   // wrappers find theirs), started by a "launcher" (a .cmd file) as copies of
   // ping.exe in that folder. Its post-launch and post-exit steps note how many

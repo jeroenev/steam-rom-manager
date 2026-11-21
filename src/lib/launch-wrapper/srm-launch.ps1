@@ -70,16 +70,19 @@ function Invoke-Stage([string]$stage, $steps) {
     }
 }
 
-# The game's processes. With a game folder: anything running from it (or,
-# where the path can't be read, named like the game's executable). Without:
-# the started process and every process it started, followed through
-# processes that have exited (Windows keeps a child's parent id).
+# The game's processes. With a game folder: this Windows session's programs
+# running from it (or, where the path can't be read, named like the game's
+# executable); another signed-in user's copy of the game isn't this
+# launch's. Without: the started process and every process it started,
+# followed through processes that have exited (Windows keeps a child's
+# parent id).
 $script:tracked = @{}
+$script:session = [Diagnostics.Process]::GetCurrentProcess().SessionId
 function Get-GameProcesses {
     If ($Config.game -and $Config.game.folder) {
         $folder = [IO.Path]::GetFullPath([string]$Config.game.folder).TrimEnd('\') + '\'
         $exeName = If ($Config.game.exeName) { [IO.Path]::GetFileNameWithoutExtension([string]$Config.game.exeName) } Else { $null }
-        Return @(Get-Process | Where-Object {
+        Return @(Get-Process | Where-Object { $_.SessionId -eq $script:session } | Where-Object {
             If ($_.Path) { $_.Path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $exeName -and $_.ProcessName -eq $exeName }
         } | ForEach-Object { $_.Id })
     }
