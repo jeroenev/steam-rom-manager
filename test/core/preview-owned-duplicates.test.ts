@@ -5,54 +5,22 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
-import {
-  PreviewBuilder,
-  appIdOf,
-  otherParsersAppIds,
-} from "../../src/core/preview-builder";
+import { appIdOf, otherParsersAppIds } from "../../src/core/preview-builder";
 import {
   ParsedUserConfiguration,
   ParsedUserConfigurationFile,
   ParserType,
-  initArtworkRecord,
 } from "../../src/models";
 import { POWERSHELL_EXE } from "../../src/lib/helpers/launchers";
 import { shortenAppId } from "../../src/lib/helpers/steam/generate-app-id";
-import { makeFakeSteam, makeSettings, tempDir } from "../helpers/fixtures";
-
-const ALICE = { accountID: "11111111", name: "alice", steamID64: "" };
-const BOB = { accountID: "22222222", name: "bob", steamID64: "" };
-
-function file(
-  exe: string,
-  title: string,
-  args: string,
-  categories: string[],
-): ParsedUserConfigurationFile {
-  return {
-    executableLocation: exe,
-    modifiedExecutableLocation: `"${exe}"`,
-    startInDirectory: path.win32.dirname(exe),
-    filePath: exe,
-    titles: {
-      extracted: title,
-      fuzzy: title,
-      final: title,
-    } as unknown as ParsedUserConfigurationFile["titles"],
-    sortAsTitle: "",
-    argumentString: args,
-    compatToolName: "",
-    appendArgsToExecutable: false,
-    onlineImageQueries: [title],
-    steamCategories: categories,
-    imagePool: title,
-    defaultImage: initArtworkRecord(() => undefined as any),
-    backupImage: initArtworkRecord(() => undefined as any),
-    localImages: initArtworkRecord(() => [] as string[]),
-    resolvedDefaultImages: initArtworkRecord(() => [] as string[]),
-    resolvedLocalImages: initArtworkRecord(() => [] as string[]),
-  };
-}
+import { makeFakeSteam, tempDir } from "../helpers/fixtures";
+import {
+  ALICE,
+  BOB,
+  buildPreview,
+  parsedConfig,
+  parsedFile as file,
+} from "../helpers/parsed-configs";
 
 describe("Store Account shortcuts another parser already adds", () => {
   let root: string;
@@ -64,31 +32,12 @@ describe("Store Account shortcuts another parser already adds", () => {
   });
   afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
-  function config(
+  const config = (
     parserType: ParserType,
     parserId: string,
     files: ParsedUserConfigurationFile[],
     accounts = [ALICE],
-  ): ParsedUserConfiguration {
-    return {
-      configurationTitle: parserId,
-      parserId,
-      parserType,
-      drmProtect: false,
-      imageProviders: [],
-      imageProviderAPIs: { sgdb: {}, steamCDN: {} } as any,
-      controllers: {} as any,
-      steamInputEnabled: "1" as any,
-      steamDirectory: steamDir,
-      shortcutPassthrough: false,
-      overlayImages: initArtworkRecord(() => ""),
-      foundUserAccounts: accounts,
-      missingUserAccounts: [],
-      files,
-      failed: [],
-      excluded: [],
-    };
-  }
+  ) => parsedConfig(steamDir, parserType, parserId, files, accounts);
 
   // The installed game, as the EA Desktop parser in launcher mode adds it.
   const eaDesktop = (accounts = [ALICE]) =>
@@ -129,28 +78,7 @@ describe("Store Account shortcuts another parser already adds", () => {
     );
 
   async function preview(configs: ParsedUserConfiguration[]) {
-    const logged: string[] = [];
-    const parsed = {
-      parsedData: { parsedConfigs: configs, noUserAccounts: false },
-      skipped: [] as string[],
-      invalid: [] as string[],
-      reparsed: configs.length,
-    };
-    const builder = new PreviewBuilder(
-      { info: (message: any) => logged.push(String(message)) } as any,
-      {
-        executeFileParser: async () => parsed,
-        executeFileParserReusing: async () => parsed,
-        getAll: (): unknown[] => [],
-      } as any,
-      {
-        get: () =>
-          makeSettings({
-            previewSettings: { retrieveCurrentSteamImages: false },
-          }),
-      } as any,
-    );
-    const result = await builder.build();
+    const { result, logged } = await buildPreview(configs);
     const apps = (account: string) =>
       Object.values(result.previewData![steamDir][account].apps);
     return { result, apps, logged };

@@ -24,6 +24,13 @@ import { imageProviderNames } from "../lib/image-providers/available-providers";
 import { ParsersStore } from "./parsers-store";
 import { SettingsStore } from "./settings-store";
 import { addUniqueLocalImage, emptyPools } from "./image-pools";
+import {
+  DEFAULT_MULTI_STORE_SETTINGS,
+  MultiStoreSettings,
+  OwnedEntry,
+  arrangeOwned,
+} from "../lib/stores/arrange";
+import { isStoreKey } from "../lib/stores/types";
 
 export interface BuildResult {
   // Absent when the parsers produced nothing to add.
@@ -83,6 +90,53 @@ export function otherParsersAppIds(
     }
   }
   return taken;
+}
+
+// The Store Account files left out because the Store Account parser of
+// another store has the same game (by normalizeTitle of the extracted
+// title) for the same Steam directory and user account, and that store
+// comes first in the store order: per Steam directory and user account (see
+// arrangeOwned; none with multiStore "all"). Files the guard above leaves
+// out (`takenByOthers`) don't count: they aren't added. Other parsers'
+// files are no part of this.
+export function ownedInOtherStores(
+  configs: readonly ParsedUserConfiguration[],
+  settings: MultiStoreSettings,
+  takenByOthers: Map<string, Set<string>> = otherParsersAppIds(configs),
+): Map<string, Set<ParsedUserConfigurationFile>> {
+  type Entry = OwnedEntry & { file: ParsedUserConfigurationFile };
+  const entries = new Map<string, Entry[]>();
+  for (const config of configs) {
+    if (config.parserType !== STORE_ACCOUNT || !isStoreKey(config.store)) {
+      continue;
+    }
+    for (const account of config.foundUserAccounts) {
+      const key = accountKey(config.steamDirectory, account.accountID);
+      const taken = takenByOthers.get(key);
+      let list = entries.get(key);
+      if (!list) {
+        list = [];
+        entries.set(key, list);
+      }
+      for (const file of config.files) {
+        if (!taken?.has(appIdOf(config.parserType, file))) {
+          list.push({
+            title: file.titles.extracted ?? file.titles.final ?? "",
+            store: config.store,
+            file,
+          });
+        }
+      }
+    }
+  }
+  const leftOut = new Map<string, Set<ParsedUserConfigurationFile>>();
+  for (const [key, list] of entries) {
+    const { otherStore } = arrangeOwned(list, settings);
+    if (otherStore.length > 0) {
+      leftOut.set(key, new Set(otherStore.map((entry) => entry.file)));
+    }
+  }
+  return leftOut;
 }
 
 // Builds the preview list: runs the enabled parsers and turns their output
@@ -227,6 +281,12 @@ export class PreviewBuilder {
     let previewData: PreviewData = {};
     const takenByOthers = otherParsersAppIds(data);
     let ownedDuplicates = 0;
+    const otherStores = ownedInOtherStores(
+      data,
+      DEFAULT_MULTI_STORE_SETTINGS,
+      takenByOthers,
+    );
+    let ownedInOtherStore = 0;
 
     for (let i = 0; i < data.length; i++) {
       let config = data[i];
@@ -259,14 +319,19 @@ export class PreviewBuilder {
           let file = config.files[k];
           let executableLocation = file.modifiedExecutableLocation;
           let appID = appIdOf(config.parserType, file);
-          if (
-            config.parserType === STORE_ACCOUNT &&
-            takenByOthers
-              .get(accountKey(config.steamDirectory, userAccount.accountID))
-              ?.has(appID)
-          ) {
-            ownedDuplicates++;
-            continue;
+          const userKey = accountKey(
+            config.steamDirectory,
+            userAccount.accountID,
+          );
+          if (config.parserType === STORE_ACCOUNT) {
+            if (takenByOthers.get(userKey)?.has(appID)) {
+              ownedDuplicates++;
+              continue;
+            }
+            if (otherStores.get(userKey)?.has(file)) {
+              ownedInOtherStore++;
+              continue;
+            }
           }
 
           if (
@@ -446,6 +511,13 @@ export class PreviewBuilder {
       this.loggerService.info(
         this.lang.info.ownedDuplicates__i.interpolate({
           count: ownedDuplicates,
+        }),
+      );
+    }
+    if (ownedInOtherStore > 0) {
+      this.loggerService.info(
+        this.lang.info.ownedInOtherStores__i.interpolate({
+          count: ownedInOtherStore,
         }),
       );
     }

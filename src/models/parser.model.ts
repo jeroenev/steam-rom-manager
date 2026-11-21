@@ -3,6 +3,7 @@ import { Controllers } from "./controllers.model";
 import { ImageProviderAPI } from "./user-configuration.model";
 import { OnlineProviderType, ArtworkType, SelectItem } from ".";
 import { LaunchWrapper, ParserLaunchWrapper } from "./launch-wrapper.model";
+import type { StoreKey } from "../lib/stores/types";
 
 export interface StringMap {
   [key: string]: any;
@@ -75,6 +76,8 @@ export interface ParsedUserConfiguration {
   failed: string[];
   // Games left out by an exclusion (see models/user-exceptions.model.ts).
   excluded: { exclusionId: string; title: string; filePath: string }[];
+  // A Store Account parser's: the store whose account it lists.
+  store?: StoreKey;
 }
 const inputTypes = StringLiteralArray([
   "text",

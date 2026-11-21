@@ -35,3 +35,5 @@ A game installed through the store's own launcher is always left out (it is matc
 - **Leave out betas, demos and playtests** (on by default): titles naming a beta, demo, playtest or test server, as whole words ("Barony (Beta)", but not "Demon's Tilt").
 - **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match).
 - **Leave out games Steam has installed** (on by default): a game Steam itself has installed, with the same title.
+
+A game the Store Account parser of another store also lists, with the same title, gets one shortcut, from the store that comes first in the store order (see "A game several stores own" in this parser's documentation).

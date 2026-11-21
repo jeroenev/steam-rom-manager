@@ -6,7 +6,7 @@ import * as fs from "fs";
 import * as path from "path";
 import * as genericParser from "@node-steam/vdf";
 import * as json from "../helpers/json";
-import { StoreKey } from "./types";
+import { DEFAULT_STORE_ORDER, MultiStore, StoreKey } from "./types";
 
 // Whether a title names a beta, a demo, a playtest or a test server rather
 // than the game: "Barony (Beta)", "Shadwen demo", "Mortal Shell Tech Beta",
@@ -120,24 +120,6 @@ export function steamInstalledTitles(steamDir: string): Set<string> {
   );
 }
 
-// What to do with a game more than one store account owns while it isn't
-// installed: one entry, from the first store in the preferred order; one per
-// store, each named after its store ("Frostpunk (GOG)"); or one per store,
-// with the same name.
-export type MultiStore = "preferred" | "labelStore" | "all";
-
-// The store order when none is set: DRM-free first, then the stores with
-// the most complete launchers.
-export const DEFAULT_STORE_ORDER: readonly StoreKey[] = [
-  "gog",
-  "epic",
-  "amazon",
-  "ea",
-  "battlenet",
-  "humble",
-  "itch",
-];
-
 // Where a store stands in the preferred order: lower is preferred. Stores
 // missing from `order` come after the listed ones, in DEFAULT_STORE_ORDER.
 export function storeRank(
@@ -152,154 +134,57 @@ export function storeRank(
   return order.length + (fallback >= 0 ? fallback : DEFAULT_STORE_ORDER.length);
 }
 
-// The short name of a store in a game's name.
-export function storeLabel(store: string): string {
-  const labels: Record<string, string> = {
-    epic: "Epic",
-    gog: "GOG",
-    amazon: "Amazon",
-    ea: "EA",
-    battlenet: "Battle.net",
-    humble: "Humble",
-    itch: "itch.io",
-  };
-  return labels[store] ?? store;
-}
-
-// A game's name with the label asked for: "Frostpunk (GOG)", "Frostpunk
-// (Not installed)", "Frostpunk (GOG, not installed)".
-export function labelledName(
-  title: string,
-  store: string,
-  showStore: boolean,
-  showNotInstalled: boolean,
-): string {
-  const label =
-    showStore && showNotInstalled
-      ? `${storeLabel(store)}, not installed`
-      : showStore
-        ? storeLabel(store)
-        : showNotInstalled
-          ? "Not installed"
-          : undefined;
-  return label ? `${title} (${label})` : title;
-}
-
-// A game in the lists of a run: installed (from any launcher), or owned and
-// not installed (`store` set).
-export interface ArrangeEntry {
+// A game a store account owns and hasn't installed, as one store's Store
+// Account parser lists it.
+export interface OwnedEntry {
   title: string;
-  installed: boolean;
-  store?: StoreKey;
+  store: StoreKey;
 }
 
-export interface ArrangeSettings {
-  // Leave out a game another launcher has installed (the same name).
-  skipInstalledElsewhere: boolean;
-  // Leave out a game Steam has installed itself.
-  skipGamesInSteam: boolean;
+export interface MultiStoreSettings {
   multiStore: MultiStore;
+  // Store keys, most preferred first (see storeRank).
   storeOrder: readonly string[];
 }
 
-export const DEFAULT_ARRANGE_SETTINGS: ArrangeSettings = {
-  skipInstalledElsewhere: true,
-  skipGamesInSteam: true,
+export const DEFAULT_MULTI_STORE_SETTINGS: MultiStoreSettings = {
   multiStore: "preferred",
   storeOrder: DEFAULT_STORE_ORDER,
 };
 
-// What arrangeOwned left out.
-export interface Arranged {
-  // Steam has the game installed itself.
-  inSteam: number;
-  // Installed from another launcher.
-  installedElsewhere: number;
-  // Owned in a store further down the preferred order.
-  otherStore: number;
-}
-
-// Applies the settings to the entries of a run (names compared by
-// normalizeTitle):
-// 1. with skipInstalledElsewhere, an owned entry whose title an installed
-//    entry has goes;
-// 2. with skipGamesInSteam, one whose title is in `steamTitles` goes;
-// 3. a title several stores own keeps one entry ("preferred"), or each
-//    entry is named after its store ("labelStore").
-// Installed entries stay as they are; the order is kept.
-export function arrangeOwned<T extends ArrangeEntry>(
-  entries: T[],
-  settings: ArrangeSettings,
-  steamTitles: Set<string>,
-): { entries: T[]; arranged: Arranged } {
-  const arranged: Arranged = {
-    inSteam: 0,
-    installedElsewhere: 0,
-    otherStore: 0,
-  };
-  const owned = (entry: T) => !entry.installed && !!entry.store;
-  const installedTitles = new Set(
-    entries.filter((e) => e.installed).map((e) => normalizeTitle(e.title)),
-  );
-  let kept = entries.filter((entry) => {
-    if (!owned(entry)) {
-      return true;
-    }
+// The entries of one Steam user that stay when several stores own a game
+// (the same normalizeTitle), and those that go. With "preferred", only the
+// entries of the store that comes first in the store order among the stores
+// that own it stay; with "all" (or with one store), every one. A store's
+// entries stay or go together: two entries of one store are not a game
+// several stores own. The order is kept.
+export function arrangeOwned<T extends OwnedEntry>(
+  entries: readonly T[],
+  settings: MultiStoreSettings,
+): { kept: T[]; otherStore: T[] } {
+  if (settings.multiStore === "all") {
+    return { kept: [...entries], otherStore: [] };
+  }
+  const rank = (entry: T) => storeRank(entry.store, settings.storeOrder);
+  // The best rank among the stores that own a title. (A title of only
+  // signs matches nothing.)
+  const best = new Map<string, number>();
+  for (const entry of entries) {
     const title = normalizeTitle(entry.title);
-    if (settings.skipInstalledElsewhere && installedTitles.has(title)) {
-      arranged.installedElsewhere++;
-      return false;
+    const known = best.get(title);
+    if (title !== "" && (known === undefined || rank(entry) < known)) {
+      best.set(title, rank(entry));
     }
-    if (settings.skipGamesInSteam && steamTitles.has(title)) {
-      arranged.inSteam++;
-      return false;
+  }
+  const kept: T[] = [];
+  const otherStore: T[] = [];
+  for (const entry of entries) {
+    const known = best.get(normalizeTitle(entry.title));
+    if (known !== undefined && rank(entry) > known) {
+      otherStore.push(entry);
+    } else {
+      kept.push(entry);
     }
-    return true;
-  });
-
-  // Every store that owns a title, best first.
-  const storesOf = new Map<string, StoreKey[]>();
-  for (const entry of kept.filter(owned)) {
-    const title = normalizeTitle(entry.title);
-    const stores = storesOf.get(title) || [];
-    if (!stores.includes(entry.store)) {
-      stores.push(entry.store);
-    }
-    storesOf.set(title, stores);
   }
-  for (const stores of storesOf.values()) {
-    stores.sort(
-      (a, b) =>
-        storeRank(a, settings.storeOrder) - storeRank(b, settings.storeOrder),
-    );
-  }
-
-  if (settings.multiStore == "preferred") {
-    // The preferred store's first entry of a title stays.
-    const done = new Set<string>();
-    kept = kept.filter((entry) => {
-      if (!owned(entry)) {
-        return true;
-      }
-      const title = normalizeTitle(entry.title);
-      const best = storesOf.get(title)?.[0];
-      if ((best === undefined || best == entry.store) && !done.has(title)) {
-        done.add(title);
-        return true;
-      }
-      arranged.otherStore++;
-      return false;
-    });
-  } else if (settings.multiStore == "labelStore") {
-    kept = kept.map((entry) =>
-      owned(entry) &&
-      (storesOf.get(normalizeTitle(entry.title))?.length ?? 0) > 1
-        ? {
-            ...entry,
-            title: labelledName(entry.title, entry.store, true, false),
-          }
-        : entry,
-    );
-  }
-  return { entries: kept, arranged };
+  return { kept, otherStore };
 }

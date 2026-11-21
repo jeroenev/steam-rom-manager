@@ -42,6 +42,24 @@ export function isStoreKey(value: unknown): value is StoreKey {
   return (STORE_KEYS as readonly unknown[]).includes(value);
 }
 
+// The order of preference among stores when several own a game that isn't
+// installed (the "ownedGames" settings), when none is set: DRM-free first,
+// then the stores with the most complete launchers. (BoilR's too.)
+export const DEFAULT_STORE_ORDER: readonly StoreKey[] = [
+  "gog",
+  "epic",
+  "amazon",
+  "ea",
+  "battlenet",
+  "humble",
+  "itch",
+];
+
+// What to do with a game more than one store account owns while it isn't
+// installed: one shortcut, from the store that comes first in the store
+// order ("preferred"), or one from every store ("all").
+export type MultiStore = "preferred" | "all";
+
 // The stores whose login is a browser's cookies rather than tokens. Their
 // requests go through a browser partition of their own, which sends the
 // cookies and takes the store's renewals as a browser would. That partition

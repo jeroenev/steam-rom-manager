@@ -4,12 +4,11 @@ import { afterAll, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  ArrangeEntry,
-  ArrangeSettings,
-  DEFAULT_ARRANGE_SETTINGS,
+  DEFAULT_MULTI_STORE_SETTINGS,
+  MultiStoreSettings,
+  OwnedEntry,
   arrangeOwned,
   isPrerelease,
-  labelledName,
   normalizeTitle,
   steamInstalledGames,
   steamInstalledTitles,
@@ -18,30 +17,25 @@ import {
 import { StoreKey } from "../../src/lib/stores/types";
 import { tempDir } from "../helpers/fixtures";
 
-const entry = (title: string, store?: StoreKey): ArrangeEntry =>
-  store ? { title, installed: false, store } : { title, installed: true };
+const entry = (title: string, store: StoreKey): OwnedEntry => ({
+  title,
+  store,
+});
 
-// Installed from Epic, from a launcher without store ids, and owned on GOG
-// and Epic.
-const sample = (): ArrangeEntry[] => [
-  entry("PREY"),
-  entry("Rayman Legends"),
+// The owned games of one Steam user's Store Account parsers: Frostpunk on
+// GOG and Epic (Epic's listed first), Prey on GOG and Amazon (named apart),
+// Rayman Legends on Epic only.
+const sample = (): OwnedEntry[] => [
+  entry("Frostpunk", "epic"),
+  entry("Rayman Legends", "epic"),
+  entry("PREY", "amazon"),
   entry("Prey", "gog"),
   entry("Frostpunk", "gog"),
   entry("Rocket League", "gog"),
-  entry("Frostpunk", "epic"),
-  entry("Rayman Legends", "epic"),
-  entry("Alan Wake", "epic"),
 ];
 
-function run(settings: ArrangeSettings, steam: string[]) {
-  const { entries, arranged } = arrangeOwned(
-    sample(),
-    settings,
-    new Set(steam.map(normalizeTitle)),
-  );
-  return { names: entries.map((e) => e.title).sort(), entries, arranged };
-}
+const names = (entries: OwnedEntry[]) =>
+  entries.map((e) => `${e.title} (${e.store})`);
 
 describe("owned games arrangement", () => {
   it("tells betas, demos and test servers from games", () => {
@@ -80,66 +74,59 @@ describe("owned games arrangement", () => {
     expect(normalizeTitle("Ōkami HD")).toBe("ōkamihd");
   });
 
-  it("the defaults leave one entry per game", () => {
-    const { names, arranged } = run(DEFAULT_ARRANGE_SETTINGS, [
-      "Rocket League",
-    ]);
-    expect(names).toEqual(["Alan Wake", "Frostpunk", "PREY", "Rayman Legends"]);
-    expect(arranged).toEqual({
-      inSteam: 1,
-      installedElsewhere: 2,
-      otherStore: 1,
+  describe("a game several stores own", () => {
+    it("keeps the preferred store's entry: GOG first by default", () => {
+      const { kept, otherStore } = arrangeOwned(
+        sample(),
+        DEFAULT_MULTI_STORE_SETTINGS,
+      );
+      expect(names(kept)).toEqual([
+        "Rayman Legends (epic)",
+        "Prey (gog)",
+        "Frostpunk (gog)",
+        "Rocket League (gog)",
+      ]);
+      expect(names(otherStore)).toEqual(["Frostpunk (epic)", "PREY (amazon)"]);
     });
-  });
 
-  it("the preferred store keeps the game", () => {
-    const frostpunk = (settings: ArrangeSettings) =>
-      run(settings, [])
-        .entries.filter((e) => e.title === "Frostpunk")
-        .map((e) => e.store);
-    expect(frostpunk(DEFAULT_ARRANGE_SETTINGS)).toEqual(["gog"]);
-    expect(
-      frostpunk({ ...DEFAULT_ARRANGE_SETTINGS, storeOrder: ["epic"] }),
-    ).toEqual(["epic"]);
-  });
+    it("follows the store order", () => {
+      const settings: MultiStoreSettings = {
+        multiStore: "preferred",
+        storeOrder: ["amazon", "epic"],
+      };
+      const { kept, otherStore } = arrangeOwned(sample(), settings);
+      expect(names(kept)).toEqual([
+        "Frostpunk (epic)",
+        "Rayman Legends (epic)",
+        "PREY (amazon)",
+        "Rocket League (gog)",
+      ]);
+      expect(names(otherStore)).toEqual(["Prey (gog)", "Frostpunk (gog)"]);
+    });
 
-  it("everything can be kept", () => {
-    const { names, arranged } = run(
-      {
-        ...DEFAULT_ARRANGE_SETTINGS,
-        skipGamesInSteam: false,
-        skipInstalledElsewhere: false,
+    it('keeps every store\'s entry with "all"', () => {
+      const { kept, otherStore } = arrangeOwned(sample(), {
+        ...DEFAULT_MULTI_STORE_SETTINGS,
         multiStore: "all",
-      },
-      ["Rocket League"],
-    );
-    expect(names).toHaveLength(8);
-    expect(arranged).toEqual({
-      inSteam: 0,
-      installedElsewhere: 0,
-      otherStore: 0,
+      });
+      expect(names(kept)).toEqual(names(sample()));
+      expect(otherStore).toEqual([]);
     });
-  });
 
-  it("copies in several stores can carry their store", () => {
-    const { names } = run(
-      {
-        ...DEFAULT_ARRANGE_SETTINGS,
-        skipInstalledElsewhere: false,
-        multiStore: "labelStore",
-      },
-      [],
-    );
-    expect(names).toEqual([
-      "Alan Wake",
-      "Frostpunk (Epic)",
-      "Frostpunk (GOG)",
-      "PREY",
-      "Prey",
-      "Rayman Legends",
-      "Rayman Legends",
-      "Rocket League",
-    ]);
+    it("keeps two entries of one store, and titles of only signs", () => {
+      const entries = [
+        entry("Doom", "epic"),
+        entry("DOOM", "epic"),
+        entry("™", "epic"),
+        entry("™", "gog"),
+      ];
+      const { kept, otherStore } = arrangeOwned(
+        entries,
+        DEFAULT_MULTI_STORE_SETTINGS,
+      );
+      expect(names(kept)).toEqual(names(entries));
+      expect(otherStore).toEqual([]);
+    });
   });
 
   it("ranks the listed stores first", () => {
@@ -151,19 +138,6 @@ describe("owned games arrangement", () => {
       storeRank("unknown", order),
     );
     expect(storeRank("gog")).toBeLessThan(storeRank("epic"));
-  });
-
-  it("labels names", () => {
-    expect(labelledName("Frostpunk", "gog", false, false)).toBe("Frostpunk");
-    expect(labelledName("Frostpunk", "gog", false, true)).toBe(
-      "Frostpunk (Not installed)",
-    );
-    expect(labelledName("Frostpunk", "gog", true, false)).toBe(
-      "Frostpunk (GOG)",
-    );
-    expect(labelledName("Frostpunk", "battlenet", true, true)).toBe(
-      "Frostpunk (Battle.net, not installed)",
-    );
   });
 
   describe("games Steam has installed", () => {

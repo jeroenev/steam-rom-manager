@@ -41,6 +41,7 @@ import * as sgdbSearch from "./image-providers/sgdb-search";
 import { TitleModifierHandler } from "./title-modifier-handler";
 import { makeLaunchWrapper, wrapperExecutable } from "./launch-wrapper";
 import { ruleFor, ruleTitle, searchQuery } from "../core/exceptions-format";
+import { isStoreKey } from "./stores/types";
 
 interface PreParserResult {
   superType: string;
@@ -373,6 +374,12 @@ export class FileParser {
           failed: _.cloneDeep(parsedData.failed),
           excluded: [],
         };
+        // (a Store Account parser's store: see PreviewBuilder's games
+        // several stores own)
+        const store = config.parserInputs?.storeAccount;
+        if (config.parserType === "Store Account" && isStoreKey(store)) {
+          parsedConfig.store = store;
+        }
         resolve({
           superType: superType,
           config: config,

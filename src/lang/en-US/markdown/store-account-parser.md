@@ -22,6 +22,12 @@ Use one Store Account parser per store account. By default its games go into the
 - **Battle.net**: the classic games of an account (Warcraft III, Diablo II) and games SRM doesn't know open Battle.net's download page. Battle.net's China region is not supported.
 - **Humble Bundle** lists the DRM-free games with a Windows or Linux download. A game that came with a key for another store (such as Steam) is left out: it is in that store's library. Humble has no launcher, so a shortcut opens the game's page in your Humble library, where you download it.
 
+## A game several stores own
+
+When the Store Account parsers of two stores list the same game (the same title, compared by its letters and digits only, so "PREY" and "Prey" match) for the same Steam user, SRM adds **one** shortcut: the one of the store that comes first in the store order. The others are left out, and the log says how many. The store order is GOG, Epic Games Store, Amazon Games, EA app, Battle.net, Humble Bundle, itch.io: DRM-free first, then the stores with the most complete launchers.
+
+This is only between Store Account parsers: a game installed through any launcher is left out by the parser itself (see its settings), and the shortcut of another parser is never left out.
+
 ## What a shortcut opens
 
 A game that isn't installed opens, in this order:
