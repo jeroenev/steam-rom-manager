@@ -17,10 +17,12 @@
 //   scripts and changes with releases of the site, so SRM looks it up there,
 //   and keeps it until the site no longer takes it. The shape of its answer
 //   is the one the page's code reads and its own mock data has: items with
-//   their keys and downloads (entitlements). A bundle shows as a group
-//   (itemType entitlement-group) without entitlements; its games are taken
-//   to be items of their own, as the page's Purchased tab lists every
-//   product.
+//   their keys and downloads (entitlements). A group (itemType
+//   entitlement-group) has no entitlements: the page links it to
+//   /home/library/group/<id>, a page of its own. Whether a group's games
+//   are also items of their own is unverified (no signed-in answer yet), so
+//   the groups a list has are logged: games that are only in a group are
+//   not listed.
 //
 // Login: the window opens Ory's sign-in for browsers, with return_to set to
 // the library page; heading there ends the sign-in. The login is the cookies
@@ -168,6 +170,8 @@ export interface LibraryItem {
   keys: Entitlement[];
   // DRM-free downloads.
   downloads: Entitlement[];
+  // A group of items (itemType entitlement-group), which has none of these.
+  group?: true;
 }
 
 export interface Entitlement {
@@ -273,10 +277,32 @@ async function listLibrary(
   try {
     await requireSignedIn(ctx);
     const items = await fetchLibrary(ctx, humble.libraryActionId, remember);
+    logGroups(ctx, items);
+    // (not partial: a group is no lookup that failed, and a partial list
+    // would be fetched again every 15 minutes)
     return { games: ownedGames(items, ctx.previous) };
   } catch (err) {
     throw wrapErr(err, "Could not list the Humble Bundle library");
   }
+}
+
+// Says which library rows are groups, whose games SRM doesn't read (see
+// the top of this file). Bundle names are no secret.
+export function logGroups(
+  ctx: Pick<StoreContext, "log">,
+  items: readonly LibraryItem[],
+) {
+  const groups = items.filter((item) => item.group);
+  if (groups.length === 0) {
+    return;
+  }
+  const names = groups
+    .slice(0, 10)
+    .map((group) => group.title || group.id)
+    .join(", ");
+  ctx.log(
+    `Humble Bundle: ${groups.length} library rows are groups, whose games SRM does not read yet (${names}${groups.length > 10 ? ", ..." : ""}). Games that are only in a group are not listed.`,
+  );
 }
 
 // Fails with a refused login when Humble's session status says the
@@ -540,6 +566,7 @@ function parseItem(raw: any): LibraryItem {
     title: text(raw.title),
     keys: list(raw.entitlements?.keys).map(parseEntitlement),
     downloads: list(raw.entitlements?.downloads).map(parseEntitlement),
+    ...(raw.itemType === "entitlement-group" && { group: true as const }),
   };
 }
 

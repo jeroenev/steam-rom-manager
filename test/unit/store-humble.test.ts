@@ -370,7 +370,9 @@ describe("Humble Bundle", () => {
       pageId: "grp-indie-bundle",
       keys: [],
       downloads: [],
+      group: true,
     });
+    expect(page2.items[0].group).toBeUndefined();
     expect(page2.items[6]).toEqual({
       id: "",
       pageId: "",
@@ -978,6 +980,21 @@ describe("Humble Bundle account", () => {
       String(humble.SITE_PAGE_SIZE),
       String(humble.SITE_PAGE_SIZE),
     ]);
+  });
+
+  it("says in the log which rows are groups, whose games aren't read", async () => {
+    await signIn();
+    host.logs.length = 0;
+    const library = await refresh.refreshLibrary("humble");
+    expect(library.partial).toBe(false);
+    const said = host.logs.filter((line) => line.includes("groups"));
+    expect(said).toHaveLength(1);
+    expect(said[0]).toContain("1 library rows are groups");
+    expect(said[0]).toContain("Humble Indie Bundle");
+    // None, nothing said.
+    const none: string[] = [];
+    humble.logGroups({ log: (line) => none.push(line) }, items().slice(0, 5));
+    expect(none).toEqual([]);
   });
 
   it("a list shorter than the library says it is isn't saved", async () => {
