@@ -420,6 +420,35 @@ describe("Humble Bundle", () => {
     expect(notTheLibrary[6].message).toContain("INVALID_REQUEST");
   });
 
+  it("reads only the action's result: the page rendered again beside it can't fail the answer", () => {
+    // (Next.js adds the page in `f` when the action revalidates; here a
+    // component of it failed)
+    const withPage =
+      '0:{"a":"$@1","f":[["$","$L2",null,{}]],"b":"x","i":false}\n' +
+      '1:{"success":true,"results":[],"pagination":{}}\n' +
+      '2:E{"digest":"1"}\n';
+    expect(humble.parseLibraryAnswer(humble.LIBRARY_URL, withPage)).toEqual({
+      items: [],
+      totalPages: 0,
+      totalDocs: 0,
+    });
+    // A page nested deeper than any answer may be.
+    const deep = "[".repeat(300) + "]".repeat(300);
+    expect(
+      humble.parseLibraryAnswer(
+        humble.LIBRARY_URL,
+        `0:{"a":"$@1","f":${deep}}\n1:{"success":true,"results":[],"pagination":{}}\n`,
+      ).items,
+    ).toEqual([]);
+    // The result itself still has to be whole.
+    expect(() =>
+      humble.parseLibraryAnswer(
+        humble.LIBRARY_URL,
+        '0:{"a":"$@1","f":"$0"}\n1:E{"digest":"7"}\n',
+      ),
+    ).toThrow("could not list the library: the server failed: error 7");
+  });
+
   it("keeps download links' queries out of errors", () => {
     // (an answer without results: its start ends up in the error)
     const err = (() => {

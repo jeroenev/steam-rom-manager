@@ -68,7 +68,11 @@ import {
   wrapErr,
 } from "./http";
 import { StoreResponse } from "./host";
-import { FlightServerError, flightRoot } from "./humble-flight";
+import {
+  FlightServerError,
+  flightField,
+  parseFlightRows,
+} from "./humble-flight";
 import { sessionData } from "./storage";
 import {
   ListContext,
@@ -464,8 +468,8 @@ export async function readLibraryAnswer(
 // Reads the library action's answer (React Flight, see humble-flight.ts):
 // row 0 holds the action's result in `a`, which is
 // {success, results, pagination: {page, totalPages, totalDocs}}, or
-// {success: false, error: <code>}. `finalUrl` is where the request ended up
-// after redirects.
+// {success: false, error: <code>}. Only `a` is read (see flightField).
+// `finalUrl` is where the request ended up after redirects.
 export function parseLibraryAnswer(
   finalUrl: string,
   body: string,
@@ -482,9 +486,9 @@ export function parseLibraryAnswer(
     new Error(
       `Unexpected answer from Humble Bundle instead of the library: ${detail}. Body starts with: ${snippet(body)}`,
     );
-  let root: any;
+  let result: any;
   try {
-    root = flightRoot(body);
+    result = flightField(parseFlightRows(body), 0, "a");
   } catch (err) {
     if (err instanceof FlightServerError) {
       throw new Error(
@@ -493,7 +497,6 @@ export function parseLibraryAnswer(
     }
     throw unexpected(messageOf(err));
   }
-  const result = root?.a;
   if (!result || typeof result !== "object") {
     throw unexpected("no result of the library action in it");
   }

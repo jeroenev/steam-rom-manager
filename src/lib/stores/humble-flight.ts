@@ -134,6 +134,19 @@ export function flightRoot(body: string): unknown {
   return flightValue(parseFlightRows(body), 0);
 }
 
+// Field `key` of row `id` (an object), its references resolved; undefined
+// when the row is no object. The row's other fields are left as they are:
+// Next.js's action answer also carries the page, rendered again, in `f`
+// when the action revalidates, and a part that isn't read can't fail the
+// answer (an error of some component in it, or a page nested too deep).
+export function flightField(
+  rows: Map<number, FlightRow>,
+  id: number,
+  key: string,
+): unknown {
+  return new Resolver(rows).field(id, key);
+}
+
 // The server threw while it made the answer.
 export class FlightServerError extends Error {
   name = "FlightServerError";
@@ -146,6 +159,32 @@ class Resolver {
   private busy = new Set<number>();
 
   constructor(private rows: Map<number, FlightRow>) {}
+
+  field(id: number, key: string): unknown {
+    const row = this.rows.get(id);
+    if (!row) {
+      throw new FlightFormatError(`row ${id.toString(16)} is missing`);
+    }
+    if (row.kind === "error") {
+      throw new FlightServerError(`the server failed: ${row.message}`);
+    }
+    if (
+      row.kind !== "json" ||
+      row.value === null ||
+      typeof row.value !== "object" ||
+      Array.isArray(row.value)
+    ) {
+      return undefined;
+    }
+    // (a bare reference to the row itself, inside the field, must not
+    // resolve the whole row, the parts that aren't read included)
+    this.busy.add(id);
+    try {
+      return this.value((row.value as Record<string, unknown>)[key], 2);
+    } finally {
+      this.busy.delete(id);
+    }
+  }
 
   row(id: number, depth: number): unknown {
     if (this.done.has(id)) {
