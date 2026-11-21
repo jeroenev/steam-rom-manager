@@ -2,6 +2,7 @@
 // import and one line here; until then its account shows as "not yet".
 
 import { amazonClient } from "./amazon";
+import { battlenetClient } from "./battlenet";
 import { eaClient } from "./ea";
 import { epicClient } from "./epic";
 import { gogClient } from "./gog";
@@ -27,4 +28,5 @@ registerStoreClient(epicClient);
 registerStoreClient(gogClient);
 registerStoreClient(amazonClient);
 registerStoreClient(eaClient);
+registerStoreClient(battlenetClient);
 registerStoreClient(itchClient);
