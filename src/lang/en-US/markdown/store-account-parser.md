@@ -36,6 +36,7 @@ In **Settings**, **Owned Games**, for every Store Account parser:
 
 - **A game several store accounts own**: one shortcut, from the first store in the store order (default), or a shortcut from every store.
 - **Store order**: the stores, most preferred first.
+- **Ask before adding more games that aren't installed than this** (default 100): before **Save to Steam** adds more Store Account shortcuts that aren't in Steam yet than this, SRM asks first. A first save with a large library adds every game the account owns, so this is where you can still stop. `0` never asks. The command line never asks: it says so in its output and adds them.
 - **Fetch a store account's games again when they are older than** (default 6 hours): see the parser's Account input.
 
 ## What a shortcut opens

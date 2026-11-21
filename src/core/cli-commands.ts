@@ -1,6 +1,7 @@
 import { UserConfiguration } from "../models";
 import { Core } from "./core";
 import { findParsers } from "./parser-commands";
+import { confirmOwnedShortcuts, ownedShortcutsToAdd } from "./owned-confirm";
 
 // What the CLI commands print to; the main process maps this to stdout.
 export interface CliOutput {
@@ -104,6 +105,14 @@ export async function add(
   }
   if ((await generate(core, out, parserIds)) === 0) {
     return true;
+  }
+  // (the app asks first here; the command line never waits for an answer)
+  const owned = ownedShortcutsToAdd(core.preview.getPreviewData());
+  const confirmAbove = core.settings.get().ownedGames?.confirmAbove ?? 0;
+  if (confirmOwnedShortcuts(owned, confirmAbove)) {
+    out.log(
+      `Adding ${owned} games your store accounts own but haven't installed (more than ${confirmAbove}: the app asks before this)`,
+    );
   }
   out.log("Adding app list to steam");
   const subscription = core.preview

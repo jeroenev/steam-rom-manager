@@ -44,6 +44,7 @@ import type { ArtworkProviders } from "./artwork-providers";
 import type { SteamWriter } from "./steam-writer";
 import type { PreviewBuilder } from "./preview-builder";
 import { addUniqueLocalImage, emptyPools, keepArtworkPicks, keepRetrievedPools } from "./image-pools";
+import { ownedShortcutsSaved } from "./owned-confirm";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -281,6 +282,9 @@ export class PreviewEngine {
       );
       if (ok && outcomes) {
         this.updatePreviewDataUrls(outcomes, imageRes);
+      }
+      if (ok && !options.removeAll) {
+        ownedShortcutsSaved(this.previewData);
       }
       if (ok && options.removeAll) {
         this.clearPreviewData();

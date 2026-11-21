@@ -281,6 +281,22 @@
       <div class="inlineGroup">
         <ng-number-input
           class="numberInput"
+          [ngModel]="settings.ownedGames.confirmAbove"
+          (ngModelChange)="
+            settings.ownedGames.confirmAbove = $event; onSettingsChange()
+          "
+          [min]="0"
+          [step]="1"
+        ></ng-number-input>
+        <div class="text" style="margin-left: 0.25em">
+          {{ lang.text.confirmAbove }}
+        </div>
+      </div>
+    </div>
+    <div class="inputContainer">
+      <div class="inlineGroup">
+        <ng-number-input
+          class="numberInput"
           [ngModel]="settings.ownedGames.libraryMaxAgeHours"
           (ngModelChange)="
             settings.ownedGames.libraryMaxAgeHours = $event;

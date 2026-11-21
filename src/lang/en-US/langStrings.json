@@ -20,6 +20,7 @@
       "retryDownload": "Retry artwork download",
       "generateAppList": "Refresh",
       "saveAppList": "Save to Steam",
+      "confirmOwnedShortcuts__i": "This adds ${count} games your store accounts own but haven't installed to Steam (Store Account parsers).\n\nAdd them?\n\nSRM asks when there are more than ${limit}: change that in Settings, Owned Games.",
       "removeAppList": "Remove from Steam",
       "remainingImages": "Retrieving urls:",
       "stopUrlRetrieving": "Stop",
@@ -620,6 +621,7 @@
         "storeOrder": "Store order (the first store that owns a game gives its shortcut):",
         "moveUp_btn": "Up",
         "moveDown_btn": "Down",
+        "confirmAbove": "Ask before adding more games that aren't installed than this (0: never ask)",
         "libraryMaxAgeHours": "Fetch a store account's games again when they are older than",
         "hours": "hours"
       },

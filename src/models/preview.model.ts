@@ -129,6 +129,10 @@ export interface PreviewDataApp {
   // and argumentString the game's own launch options, which go in the file
   // the shortcut runs.
   launchWrapper?: LaunchWrapper;
+  // Set on a Store Account parser's app (a game that isn't installed): Steam
+  // has no shortcut with its app id yet, so saving adds one (see
+  // core/owned-confirm.ts).
+  notInSteam?: boolean;
 }
 
 export interface PreviewDataApps {

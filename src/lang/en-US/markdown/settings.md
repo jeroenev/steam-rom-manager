@@ -72,6 +72,10 @@ When the Store Account parsers of several stores list the same game (the same ti
 
 The stores, most preferred first: when several own a game, the first one's shortcut is added. By default GOG, Epic Games Store, Amazon Games, EA app, Battle.net, Humble Bundle, itch.io.
 
+### Ask before adding more games that aren't installed than this `[Default 100]`
+
+Before `Save to Steam` adds more Store Account shortcuts that aren't in Steam yet than this, SRM asks first. `0` never asks. The command line never asks.
+
 ### Fetch a store account's games again when they are older than `[Default 6 hours]`
 
 SRM fetches a store account's list of games again by itself (when the app starts, and before a Store Account parser runs) once it is older than this.

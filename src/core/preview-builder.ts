@@ -12,7 +12,7 @@ import {
   initArtworkRecord,
   Logger,
 } from "../models";
-import { ArtworkCache } from "../lib";
+import { ArtworkCache, VDF_Manager } from "../lib";
 import { APP } from "../variables";
 import * as steam from "../lib/helpers/steam";
 import * as url from "../lib/helpers/url";
@@ -137,6 +137,33 @@ export function ownedInOtherStores(
     }
   }
   return leftOut;
+}
+
+// The app ids of the shortcuts each Steam user of `tree` has in Steam
+// (shortcuts.vdf), made from program and title as SRM's own are: per Steam
+// directory and user account. (getNonSteamShortcutsData doesn't index
+// them.)
+export async function steamShortcutIds(
+  tree: SteamTree<any>,
+): Promise<Map<string, Set<string>>> {
+  const ids = new Map<string, Set<string>>();
+  if (tree.numberOfUsers === 0) {
+    return ids;
+  }
+  const vdf = new VDF_Manager();
+  await vdf.prepare(tree.tree as any as PreviewData);
+  await vdf.read({
+    shortcuts: { read: true, skipIndexing: false },
+    addedItems: false,
+    screenshots: false,
+  });
+  vdf.forEach((steamDirectory, userId, listItem) => {
+    ids.set(
+      accountKey(steamDirectory, userId),
+      new Set(listItem.shortcuts.getAppIds()),
+    );
+  });
+  return ids;
 }
 
 // Builds the preview list: runs the enabled parsers and turns their output
@@ -287,6 +314,11 @@ export class PreviewBuilder {
       takenByOthers,
     );
     let ownedInOtherStore = 0;
+    const inSteam = data.some(
+      (config) => config.parserType === STORE_ACCOUNT && config.files.length,
+    )
+      ? await steamShortcutIds(steamTreeData)
+      : new Map<string, Set<string>>();
 
     for (let i = 0; i < data.length; i++) {
       let config = data[i];
@@ -491,6 +523,9 @@ export class PreviewBuilder {
               overlayImages: config.overlayImages,
               executableLocation,
               ...(file.launchWrapper && { launchWrapper: file.launchWrapper }),
+              ...(config.parserType === STORE_ACCOUNT && {
+                notInSteam: !inSteam.get(userKey)?.has(appID),
+              }),
             };
           } else {
             let currentCategories =
