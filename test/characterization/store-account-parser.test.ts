@@ -48,7 +48,9 @@ import {
   ownedGame,
 } from "../../src/lib/stores/types";
 import {
+  DEFAULT_BATTLE_NET_EXE,
   EXPLORER_EXE,
+  POWERSHELL_EXE,
   galaxyPaths,
   itchDbPath,
 } from "../../src/lib/helpers/launchers";
@@ -267,6 +269,137 @@ describe("Store Account parser (characterization)", () => {
     expect(titles.sort()).toEqual([
       "Disco Elysium",
       "The Witcher 3: Wild Hunt",
+    ]);
+  });
+
+  it("Epic, Amazon, EA, Battle.net and Humble: each game opens its store's launcher; one installed from it is left out by its id", async () => {
+    const epicExe =
+      "C:\\Program Files (x86)\\Epic Games\\Launcher\\Portal\\Binaries\\Win64\\EpicGamesLauncher.exe";
+    const amazonExe =
+      "C:\\Users\\alice\\AppData\\Local\\Amazon Games\\App\\Amazon Games.exe";
+    const eaExe =
+      "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EADesktop.exe";
+    // What each store's client lists (ids and extra as they emit them).
+    const owned: Partial<Record<StoreKey, OwnedGame[]>> = {
+      epic: [
+        ownedGame("epic", "Calluna", "Control", {
+          namespace: "ns-control",
+          catalog_item_id: "cat-control",
+          product_slug: "control",
+        }),
+        ownedGame("epic", "Sugar", "Rocket League", {
+          namespace: "ns-rl",
+          catalog_item_id: "cat-rl",
+        }),
+      ],
+      amazon: [
+        ownedGame(
+          "amazon",
+          "amzn1.adg.product.11111111-1111-1111-1111-111111111111",
+          "Fallout: New Vegas Ultimate Edition",
+          { entitlement_id: "e1", sku: "FNV_SKU" },
+        ),
+        ownedGame("amazon", "amzn1.adg.product.2", "Morrowind"),
+      ],
+      ea: [
+        ownedGame("ea", "Origin.OFR.50.0001", "Dead Space", {
+          content_id: "1028663",
+        }),
+        // Installed: its installer data lists the content id, not the offer.
+        ownedGame("ea", "Origin.OFR.50.0002", "Unravel", {
+          content_id: "71512",
+        }),
+      ],
+      battlenet: [
+        ownedGame("battlenet", "WoW", "World of Warcraft", {
+          internal_id: "wow",
+        }),
+        // A classic CD-key game: no launcher id, the download page.
+        ownedGame("battlenet", "W3C", "Warcraft III: Reign of Chaos"),
+        // Installed: product.db's code differs in case.
+        ownedGame("battlenet", "W3", "Warcraft 3: Reforged", {
+          internal_id: "w3",
+        }),
+      ],
+      humble: [
+        ownedGame("humble", "owlboy_subproduct", "Owlboy", {
+          url: "https://www.humblebundle.com/home/library/owlboy",
+        }),
+      ],
+    };
+    const installedHere: Partial<Record<StoreKey, InstalledGame[]>> = {
+      epic: [{ store: "epic", id: "Sugar" }],
+      amazon: [{ store: "amazon", id: "amzn1.adg.product.2" }],
+      ea: [{ store: "ea", id: "71512" }],
+      battlenet: [{ store: "battlenet", id: "w3" }],
+    };
+    setStoreAccountEnvironment({
+      launchers: () => ({
+        ...windows,
+        epic: epicExe,
+        amazon: amazonExe,
+        ea: eaExe,
+        battlenet: DEFAULT_BATTLE_NET_EXE,
+      }),
+      installed: async (store) => installedHere[store] ?? [],
+    });
+    const shortcuts: Record<string, string[]> = {};
+    for (const [store, games] of Object.entries(owned)) {
+      storage.saveSession(
+        store as StoreKey,
+        { accountName: "player", data: {} },
+        host,
+      );
+      library(store as StoreKey, games);
+      const result = await parse(
+        config({ storeAccount: store }, { configTitle: `${store} owned` }),
+      );
+      for (const file of result.parsedConfigs[0].files) {
+        shortcuts[file.titles.final] = [
+          file.executableLocation,
+          file.argumentString,
+          file.startInDirectory,
+        ];
+      }
+    }
+    const powershell = path.win32.dirname(POWERSHELL_EXE);
+    const explorer = path.win32.dirname(EXPLORER_EXE);
+    expect(Object.keys(shortcuts).sort()).toEqual([
+      "Control",
+      "Dead Space",
+      "Fallout: New Vegas Ultimate Edition",
+      "Owlboy",
+      "Warcraft III: Reign of Chaos",
+      "World of Warcraft",
+    ]);
+    expect(shortcuts["Control"][0]).toBe(POWERSHELL_EXE);
+    expect(shortcuts["Control"][1]).toContain(
+      "com.epicgames.launcher://apps/ns-control%3Acat-control%3ACalluna?action=launch&silent=true",
+    );
+    expect(shortcuts["Control"][2]).toBe(powershell);
+    expect(shortcuts["Fallout: New Vegas Ultimate Edition"]).toEqual([
+      amazonExe,
+      "amazon-games://install/amzn1.adg.product.11111111-1111-1111-1111-111111111111",
+      path.win32.dirname(amazonExe),
+    ]);
+    expect(shortcuts["Dead Space"][0]).toBe(POWERSHELL_EXE);
+    expect(shortcuts["Dead Space"][1]).toContain(
+      "origin2://game/launch/?offerIds=1028663",
+    );
+    expect(shortcuts["World of Warcraft"]).toEqual([
+      DEFAULT_BATTLE_NET_EXE,
+      "--game=wow",
+      path.win32.dirname(DEFAULT_BATTLE_NET_EXE),
+    ]);
+    expect(shortcuts["Warcraft III: Reign of Chaos"]).toEqual([
+      EXPLORER_EXE,
+      '"https://download.battle.net/"',
+      explorer,
+    ]);
+    expect(shortcuts["Owlboy"]).toEqual([
+      EXPLORER_EXE,
+      '"https://www.humblebundle.com/home/library/owlboy"',
+      explorer,
     ]);
   });
 

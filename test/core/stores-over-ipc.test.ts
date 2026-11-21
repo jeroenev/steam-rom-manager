@@ -220,6 +220,38 @@ describe("store accounts over IPC", () => {
     expect(() => service.status("steam")).toThrow("Unknown store: steam");
   });
 
+  it("every store's account is available, with its own way to sign in", async () => {
+    const { service } = await makeService();
+    host.openLoginWindow = async () => {
+      throw new LoginCancelled("Sign-in window closed");
+    };
+    const ways = Object.fromEntries(
+      STORE_KEYS.map((store) => {
+        const status = service.status(store);
+        expect(status.available).toBe(true);
+        return [store, { window: status.windowLogin, paste: !!status.paste }];
+      }),
+    );
+    expect(ways).toEqual({
+      epic: { window: true, paste: true },
+      gog: { window: true, paste: true },
+      amazon: { window: true, paste: true },
+      ea: { window: true, paste: false },
+      battlenet: { window: true, paste: false },
+      humble: { window: true, paste: true },
+      itch: { window: false, paste: true },
+    });
+    // The instructions come in the UI's language, one set per store.
+    for (const store of ["epic", "amazon", "humble"]) {
+      const paste = service.status(store).paste!;
+      expect(paste.instructions).not.toBe("");
+      expect(paste.placeholder).not.toBe("");
+    }
+    expect(service.status("humble").paste?.instructions).toContain(
+      "Cookie request header",
+    );
+  });
+
   it("at start, fetches the old libraries of the stores enabled parsers use, unless offline", async () => {
     const config = (store: string, disabled = false) =>
       makeConfig({
