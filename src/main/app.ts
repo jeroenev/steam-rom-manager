@@ -162,6 +162,20 @@ autoUpdater.on("update-downloaded", (info) => {
 });
 
 // Main Listeners
+
+// SRM never signs in with a TLS client certificate. Electron's default sends
+// the first one in the user's store without asking (Chrome would ask), and
+// store sign-in windows load third-party pages and frames: refuse it for
+// every request (sign-in windows, their pop-ups and frames, service workers,
+// main-process net.fetch).
+app.on(
+  "select-client-certificate",
+  (event, _contents, _url, _list, callback) => {
+    event.preventDefault();
+    callback();
+  },
+);
+
 app.on("ready", async () => {
   // Network I/O in the core (SteamGridDB, GitHub, Steam Web API) uses
   // Electron's network stack: system certificate store and proxy, which
