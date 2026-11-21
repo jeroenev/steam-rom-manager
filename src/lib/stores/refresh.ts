@@ -632,9 +632,12 @@ async function refreshAndRecord(
       throw clean;
     }
   } finally {
-    release();
-    refreshing.delete(store);
-    changed(store);
+    try {
+      release();
+    } finally {
+      refreshing.delete(store);
+      changed(store);
+    }
   }
 }
 

@@ -395,8 +395,17 @@ function sleepSync(ms: number) {
 export const LOCK_STALE_MS = 30 * 1000;
 const LOCK_TOUCH_MS = 5 * 1000;
 
-// How long withAccountLock waits for another process's file work.
-export const ACCOUNT_LOCK_WAIT_MS = 20 * 1000;
+// How long withAccountLock waits for another process's file work: past
+// LOCK_STALE_MS, so a lock a holder left behind is taken over rather than
+// reported as busy. (The work itself takes milliseconds.)
+export const ACCOUNT_LOCK_WAIT_MS = LOCK_STALE_MS + 5 * 1000;
+
+// What Windows answers, for a moment, to a mkdir of a lock folder that was
+// just removed (it's still delete-pending), or when a scanner has it open.
+const TRANSIENT_LOCK_ERRORS = ["EPERM", "EACCES", "EBUSY"];
+// How often in a row such an answer is taken as "try again" (about a
+// second) before it's the folder's real error.
+const TRANSIENT_LOCK_TRIES = 20;
 
 export type ReleaseLock = () => void;
 
@@ -410,12 +419,20 @@ export async function acquireLock(
   const ownerFile = path.join(dir, "owner");
   makeFolder(locksFolder());
   const started = Date.now();
+  let transientFails = 0;
   for (;;) {
     try {
       fs.mkdirSync(dir);
       break;
     } catch (err: any) {
       if (err?.code !== "EEXIST") {
+        if (
+          TRANSIENT_LOCK_ERRORS.includes(err?.code) &&
+          ++transientFails <= TRANSIENT_LOCK_TRIES
+        ) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          continue;
+        }
         throw err;
       }
     }
@@ -447,12 +464,25 @@ export async function acquireLock(
   }, LOCK_TOUCH_MS);
   touch.unref?.();
   let released = false;
+  // Never throws: it runs in `finally` blocks, after the work is done.
   return () => {
     if (!released) {
       released = true;
       clearInterval(touch);
       if (stillOurs()) {
-        fs.rmSync(dir, { recursive: true, force: true });
+        try {
+          // (Node retries what Windows answers while a scanner has the
+          // owner file open)
+          fs.rmSync(dir, {
+            recursive: true,
+            force: true,
+            maxRetries: 5,
+            retryDelay: 50,
+          });
+        } catch {
+          // (left behind: it goes stale after LOCK_STALE_MS, since touching
+          // stopped)
+        }
       }
     }
   };
