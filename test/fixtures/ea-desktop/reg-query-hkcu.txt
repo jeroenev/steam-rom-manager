@@ -1,0 +1,17 @@
+
+HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Discord
+    InstallLocation    REG_SZ    C:\Users\Player\AppData\Local\Discord
+
+HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Riot Game valorant.live
+    InstallLocation    REG_SZ    D:/Riot Games/VALORANT/live
+
+HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\Wealthfolio
+    InstallLocation    REG_SZ    "C:\Users\Player\AppData\Local\Wealthfolio"
+
+HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WinDirStat
+    InstallLocation    REG_EXPAND_SZ    C:\Program Files (x86)\WinDirStat
+
+HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{53F49750-6209-4FBF-9CA8-7A333C87D1ED}_is1
+    InstallLocation    REG_SZ    C:\Users\Player\AppData\Roaming\Telegram Desktop\
+
+End of search: 5 match(es) found.

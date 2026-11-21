@@ -1,0 +1,26 @@
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\14647549
+    InstallLocation    REG_SZ    C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\AMD_Chipset_IODrivers
+    InstallLocation    REG_SZ    C:\Program Files (x86)\AMD\Chipset_IODrivers\
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Battle.net
+    InstallLocation    REG_SZ    C:\Program Files (x86)\Battle.net
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Uplay Install 420
+    InstallLocation    REG_SZ    D:/UplayLibrary/Far Cry 4/
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\VantageSRV_is1
+    InstallLocation    REG_SZ    C:\Program Files (x86)\Lenovo\VantageService\\5.1.2609.9
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{0343A2EB-5CCA-79B9-18A4-ABD484A97924}
+    InstallLocation    REG_SZ    
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{93A3AB24-36E8-41BA-80C6-CCEC237836DC}
+    InstallLocation    REG_SZ    D:\OriginLibrary\Alice Madness Returns\
+
+HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\{FF66E9F6-83E7-3A3E-AF14-8DE9A809A6A4}
+    InstallLocation    REG_SZ    
+
+End of search: 8 match(es) found.
