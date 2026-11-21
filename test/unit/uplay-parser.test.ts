@@ -83,7 +83,7 @@ const uninstallOutput = [
   "    DisplayName    REG_SZ    Far Cry 4",
   "",
   `${uninstallKey}\\Uplay Install 46`,
-  "    DisplayName    REG_SZ    Far Cry® 3",
+  "    DisplayName    REG_SZ    Far Cry 3",
   "",
   "End of search: 5 match(es) found.",
   "",
@@ -240,7 +240,8 @@ describe("the registry (reg.exe output)", () => {
   });
 
   it("lists the games Ubisoft Connect installed, from its Installs key in the 32-bit view", async () => {
-    // (as `reg query` prints it on Windows 11 with Ubisoft Connect 13416)
+    // (as `reg query` prints it on Windows 11 with Ubisoft Connect 13416,
+    // plus two made-up keys: one not an id and one with an empty InstallDir)
     registry.installs = [
       "",
       `${installsKey}\\273`,
@@ -276,7 +277,7 @@ describe("the registry (reg.exe output)", () => {
     expect(await ubisoftGameNames()).toEqual({
       "273": "Assassin's Creed IV Black Flag",
       "420": "Far Cry 4",
-      "46": "Far Cry® 3",
+      "46": "Far Cry 3",
     });
   });
 
@@ -319,7 +320,10 @@ describe("games", () => {
   const names = {
     "273": "Assassin's Creed IV Black Flag",
     "420": "Far Cry 4",
-    "46": "Far Cry® 3",
+    // (edited: Ubisoft Connect writes the cache's game_identifier here, so
+    // the two match in practice; this one differs so that the tests can
+    // tell where a title came from)
+    "46": "Far Cry 3 (Windows' list)",
   };
   // (what SRM has always listed for Assassin's Creed IV: its app id comes
   // from its title and, in exe mode, its exe)
@@ -394,7 +398,7 @@ describe("games", () => {
         "D:\\UplayLibrary\\Assassin's Creed IV Black Flag",
       ],
       ["Far Cry 4", "D:\\UplayLibrary\\Far Cry 4"],
-      ["Far Cry® 3", "D:\\UplayLibrary\\Far Cry 3"],
+      ["Far Cry 3 (Windows' list)", "D:\\UplayLibrary\\Far Cry 3"],
       // (not Assassin's Creed Origins or Anno 1800: no "Uplay Install"
       // entry, e.g. installed for another store)
     ]);
@@ -493,10 +497,17 @@ describe.runIf(os.type() === "Windows_NT")("UPlay parser", () => {
   });
 
   it("in launcher mode, needs no cache; exe mode does", async () => {
+    // (edited: Ubisoft Connect writes the cache's game_identifier here, so
+    // the two match in practice; this one differs so that the test shows
+    // the title came from Windows' list and not the folder)
+    registry.uninstall = uninstallOutput.replace(
+      "REG_SZ    Far Cry 3",
+      "REG_SZ    Far Cry 3 (Windows' list)",
+    );
     const result = await parse({ uplayLauncherMode: true });
     expect(result.success.map((game) => game.extractedTitle)).toEqual([
       "Assassin's Creed IV Black Flag",
-      "Far Cry® 3",
+      "Far Cry 3 (Windows' list)",
     ]);
     await expect(parse({ uplayLauncherMode: false })).rejects.toContain(
       "UPlay not installed",
