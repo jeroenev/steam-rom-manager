@@ -36,6 +36,7 @@ When the titles differ (the store's launcher can name a game differently from th
 - Sign-ins are never part of the parser's settings (`userConfigurations.json`), never in bug reports and never in SRM's log.
 - SRM's sign-in window is the store's own page, in a window apart from SRM, with no access to SRM.
 - **Sign out** removes the sign-in and the list from SRM. You can also end SRM's access on the store's site (itch.io: revoke the API key).
+- Deleting or disabling the parser keeps the sign-in: it belongs to the store, not to the parser. To remove it, add a new parser (you don't need to save it), choose Store Account and the store, and click **Sign out**. Or, while SRM is closed, delete `stores/<store>/` from SRM's data folder.
 
 ## The command line
 

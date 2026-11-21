@@ -3,6 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
+import { spawn } from "child_process";
 import * as paths from "../../src/paths";
 import * as storage from "../../src/lib/stores/storage";
 import { ownedGame, OwnedLibrary } from "../../src/lib/stores/types";
@@ -61,7 +62,7 @@ describe("store storage", () => {
     expect(storage.readSessionInfo("gog")).not.toBeNull();
   });
 
-  it("round-trips a library, and writers at the same time never mix their bytes", async () => {
+  it("round-trips a library; writers in one process queue on the account lock and leave no temporary files", async () => {
     const library: OwnedLibrary = {
       accountName: null,
       fetchedAt: 1,
@@ -99,6 +100,78 @@ describe("store storage", () => {
     storage.deleteAccount("gog");
     expect(storage.loadLibrary("gog")).toBeNull();
   });
+
+  it("another process reading the library while it's written never sees half a file", async () => {
+    storage.saveLibrary("gog", {
+      accountName: null,
+      fetchedAt: 0,
+      games: [],
+      partial: false,
+    });
+    // A reader in another process (as the command line reading what the
+    // app writes), reading over and over until told to stop. Plain Node: the
+    // code under test is the writer, here.
+    const reader = `
+      const fs = require("fs");
+      const file = process.argv[1];
+      let ok = 0, bad = 0, done = false;
+      process.stdin.on("data", () => {});
+      process.stdin.on("end", () => { done = true; });
+      process.stdout.write("ready\\n");
+      const pause = new Int32Array(new SharedArrayBuffer(4));
+      (function loop() {
+        if (done) {
+          process.stdout.write(JSON.stringify({ ok, bad }) + "\\n");
+          return;
+        }
+        try {
+          JSON.parse(fs.readFileSync(file, "utf8"));
+          ok++;
+        } catch (e) {
+          // (Windows: the file is being replaced at that moment)
+          if (!["ENOENT", "EPERM", "EBUSY", "EACCES"].includes(e.code)) bad++;
+        }
+        // (a short pause: Windows can't replace a file that's always open)
+        Atomics.wait(pause, 0, 0, 1);
+        setImmediate(loop);
+      })();
+    `;
+    const child = spawn(
+      process.execPath,
+      ["-e", reader, storage.libraryFile("gog")],
+      { stdio: ["pipe", "pipe", "inherit"] },
+    );
+    let output = "";
+    const lines = new Promise<string[]>((resolve, reject) => {
+      child.stdout.on("data", (chunk) => {
+        output += chunk;
+        if (output.includes("ready\n")) {
+          resolve(output.split("\n"));
+        }
+      });
+      child.on("error", reject);
+    });
+    await lines;
+    const big = (n: number) =>
+      Array.from({ length: 20000 }, (_, i) =>
+        ownedGame("gog", `${n}-${i}`, `Game number ${i} of write ${n}`),
+      );
+    for (let n = 0; n < 30; n++) {
+      storage.saveLibrary("gog", {
+        accountName: null,
+        fetchedAt: n,
+        games: big(n),
+        partial: false,
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const exited = new Promise((resolve) => child.on("exit", resolve));
+    child.stdin.end();
+    await exited;
+    const counts = JSON.parse(output.trim().split("\n").pop()!);
+    expect(counts.bad).toBe(0);
+    expect(counts.ok).toBeGreaterThan(0);
+  }, 60000);
 
   it("an unreadable library is an error, not an empty one", () => {
     fs.mkdirSync(storage.storeFolder("gog"), { recursive: true });

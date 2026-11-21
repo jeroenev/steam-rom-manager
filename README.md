@@ -54,23 +54,26 @@ ROM parsers allow one to import shortcuts using search strings, e.g. `games/${ti
 
 In addition to flexible importing of ROMS, SRM now has several _platform parsers_ for importing from popular game stores:
 
-| Parser                                                             | Windows | Mac OS | Linux | Launch Modes                                                          |
-| ------------------------------------------------------------------ | ------- | ------ | ----- | --------------------------------------------------------------------- |
-| [Amazon Games](https://gaming.amazon.com/amazon-games-app)         | ✅      | 🟦     | 🟦    | <ul><li>Launch via Amazon Games</li><li>Launch via executable</li>    |
-| [EA Desktop](https://www.ea.com/ea-app)                            | ✅      | 🟦     | 🟦    | <ul><li>Launch via EA Desktop</li><li>Launch via executable</li>      |
-| [Epic](https://store.epicgames.com/en-US/)                         | ✅      | ✅     | 🟦    | <ul><li>Launch via Epic</li><li>Launch via executable</li>            |
-| [GOG Galaxy](https://www.gog.com/galaxy)                           | ✅      | ✅     | 🟦    | <ul><li>Launch via GOG Galaxy</li><li>Launch via executable</li>      |
-| [Itch.io](https://itch.io/app)                                     | ✅      | ✅     | ✅    | <ul><li>Launch via executable</li></ul>                               |
-| [Legendary](https://github.com/derrod/legendary)                   | ✅      | ✅     | ✅    | <ul><li>Launch via Legendary</li><li>Launch via executable</li></ul>  |
-| [Ubisoft Connect](https://ubisoftconnect.com/en-US/)               | ✅      | ❌     | 🟦    | <ul><li>Launch via Ubisoft Connect</li><li>Launch via executable</li> |
-| [UWP/XBox](https://www.xbox.com/en-US/xbox-game-pass/pc-game-pass) | ✅      | 🟦     | 🟦    | <ul><li>Launch via UWP</li><li>Launch via executable</li>             |
-| [Battle.net](https://battle.net)                                   | ✅      | ❌     | 🟦    | <ul><li>Launch via Battle.net</li></ul>                               |
-| [GitHub Launcher](https://github.com/SirDiabo/GithubLauncher)      | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                               |
-| [Quiver Launcher](https://github.com/tgeorgiadis/quiver-launcher)  | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                               |
+| Parser                                                             | Windows | Mac OS | Linux | Launch Modes                                                                                                      |
+| ------------------------------------------------------------------ | ------- | ------ | ----- | ----------------------------------------------------------------------------------------------------------------- |
+| [Amazon Games](https://gaming.amazon.com/amazon-games-app)         | ✅      | 🟦     | 🟦    | <ul><li>Launch via Amazon Games</li><li>Launch via executable</li>                                                |
+| [EA Desktop](https://www.ea.com/ea-app)                            | ✅      | 🟦     | 🟦    | <ul><li>Launch via EA Desktop</li><li>Launch via executable</li>                                                  |
+| [Epic](https://store.epicgames.com/en-US/)                         | ✅      | ✅     | 🟦    | <ul><li>Launch via Epic</li><li>Launch via executable</li>                                                        |
+| [GOG Galaxy](https://www.gog.com/galaxy)                           | ✅      | ✅     | 🟦    | <ul><li>Launch via GOG Galaxy</li><li>Launch via executable</li>                                                  |
+| [Itch.io](https://itch.io/app)                                     | ✅      | ✅     | ✅    | <ul><li>Launch via executable</li></ul>                                                                           |
+| [Legendary](https://github.com/derrod/legendary)                   | ✅      | ✅     | ✅    | <ul><li>Launch via Legendary</li><li>Launch via executable</li></ul>                                              |
+| [Ubisoft Connect](https://ubisoftconnect.com/en-US/)               | ✅      | ❌     | 🟦    | <ul><li>Launch via Ubisoft Connect</li><li>Launch via executable</li>                                             |
+| [UWP/XBox](https://www.xbox.com/en-US/xbox-game-pass/pc-game-pass) | ✅      | 🟦     | 🟦    | <ul><li>Launch via UWP</li><li>Launch via executable</li>                                                         |
+| [Battle.net](https://battle.net)                                   | ✅      | ❌     | 🟦    | <ul><li>Launch via Battle.net</li></ul>                                                                           |
+| [GitHub Launcher](https://github.com/SirDiabo/GithubLauncher)      | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                                                                           |
+| [Quiver Launcher](https://github.com/tgeorgiadis/quiver-launcher)  | ✅      | ❌     | ❌    | <ul><li>Launch via executable</li></ul>                                                                           |
+| Store Account (GOG, itch.io)                                       | ✅      | ✅     | ✅    | <ul><li>Install via the store's launcher</li><li>Install via Heroic (Linux)</li><li>Open the store page</li></ul> |
 
 ✅ Implemented
 ❌ Planned
 🟦 Store not present
+
+The Store Account parser signs in to your account at a store and adds the games the account owns but hasn't installed, in the Steam collection "Not installed"; each shortcut installs its game. Epic Games Store, Amazon Games, EA app, Battle.net and Humble Bundle come later.
 
 We are open to suggestions and pull requests if you would like a platform parser added!
 

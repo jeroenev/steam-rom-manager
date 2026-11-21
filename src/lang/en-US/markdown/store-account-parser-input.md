@@ -12,8 +12,8 @@ Your sign-in to the store, and its games as SRM last fetched them. This is not a
 - **Sign in with your browser** opens the sign-in page in your own browser (useful with a password manager, or when the sign-in window has trouble). Then paste what the store shows, as the box below the buttons says:
   - **GOG**: the address of the blank page GOG ends on (it starts with `https://embed.gog.com/on_login_success`), or the code in it.
   - **itch.io**: an API key. On itch.io, open Settings > API keys, click "Generate new API key", then "View", and copy the key. You can revoke it there at any time.
-- **Refresh library** fetches the account's games now. SRM also fetches them by itself when they are older than 6 hours: when the app starts, and before this parser runs. After a failed fetch it waits 15 minutes before trying again, and the games fetched before are used meanwhile.
-- **Sign out** removes the sign-in and the list of games from SRM.
+- **Refresh library** fetches the account's games now. SRM also fetches them by itself when they are older than 6 hours: when the app starts, and before this parser runs (the app waits up to 15 seconds for that, then uses the games fetched before; the next **Add Games** has the new list). After a failed fetch it waits 15 minutes before trying again, and the games fetched before are used meanwhile.
+- **Sign out** removes the sign-in and the list of games from SRM. Deleting or disabling the parser doesn't sign out: sign out first if you want SRM to forget the account.
 
 A fetch never makes the list shrink by mistake: an empty list never replaces a list with games, and a fetch SRM made by itself is not used when it lists less than half the games of the last one (with 20 games or more). Refresh the library yourself to take such a list.
 
@@ -27,7 +27,7 @@ With SRM's **Offline mode** on, libraries are not fetched by themselves; the par
 
 ## Games left out
 
-A game installed through the store's own launcher is always left out (it is matched by the store's id for the game): add installed games with the parser for that launcher.
+A game installed through the store's own launcher is always left out (it is matched by the store's id for the game): add installed games with the parser for that launcher. SRM looks where the launcher keeps its games by default, and where your parsers for it are set to look (for example the itch.io parser's app data folder).
 
 - **Leave out betas, demos and playtests** (on by default): titles naming a beta, demo, playtest or test server, as whole words ("Barony (Beta)", but not "Demon's Tilt").
 - **Leave out games installed through another launcher** (on by default): a game installed through any launcher SRM knows (Epic, Legendary, Heroic, GOG Galaxy, Amazon Games, EA app, Battle.net, itch), with the same title. Titles are compared by their letters and digits only ("PREY" and "Prey" match).

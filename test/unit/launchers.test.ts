@@ -11,7 +11,10 @@ import {
   defaultAmazonGamesExe,
   defaultEpicManifestsDir,
   defaultItchAppDataDir,
+  findItchAppDataDir,
   galaxyPaths,
+  itchAppDataDirs,
+  itchDbPath,
   heroicConfigDirs,
   installedBattleNetProducts,
   powershellOpen,
@@ -66,6 +69,13 @@ describe("launchers", () => {
     expect(defaultItchAppDataDir("Linux", "/home/deck")).toBe(
       "/home/deck/.config/itch",
     );
+    expect(itchAppDataDirs("Linux", "/home/deck")).toEqual([
+      "/home/deck/.config/itch",
+      "/home/deck/.var/app/io.itch.itch/config/itch",
+    ]);
+    expect(itchAppDataDirs("Windows_NT", "C:\\Users\\A", "C:\\AD")).toEqual([
+      "C:\\AD\\itch",
+    ]);
     expect(heroicConfigDirs("/home/deck")).toEqual([
       "/home/deck/.config/heroic",
       "/home/deck/.var/app/com.heroicgameslauncher.hgl/config/heroic",
@@ -79,6 +89,22 @@ describe("launchers", () => {
         ],
       }),
     ).toEqual([{ uid: "s2" }]);
+  });
+
+  it("the itch app's folder: the native app's, the Flatpak's when only it has a database", () => {
+    const home = path.join(root, "deck");
+    const native = path.join(home, ".config", "itch");
+    const flatpak = path.join(home, ".var/app/io.itch.itch/config/itch");
+    const found = () => path.normalize(findItchAppDataDir("Linux", home) ?? "");
+    // Neither: the native app's (what the parser always looked for).
+    expect(found()).toBe(path.normalize(native));
+    fs.mkdirSync(path.dirname(itchDbPath(flatpak)), { recursive: true });
+    fs.writeFileSync(itchDbPath(flatpak), "");
+    expect(found()).toBe(path.normalize(flatpak));
+    // Both: the native app's.
+    fs.mkdirSync(path.dirname(itchDbPath(native)), { recursive: true });
+    fs.writeFileSync(itchDbPath(native), "");
+    expect(found()).toBe(path.normalize(native));
   });
 
   it("reads Heroic's installed lists, without DLC", () => {

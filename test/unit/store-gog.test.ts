@@ -12,7 +12,11 @@ import {
 import * as gog from "../../src/lib/stores/gog";
 import * as refresh from "../../src/lib/stores/refresh";
 import * as storage from "../../src/lib/stores/storage";
-import { LoginCapture } from "../../src/lib/stores/types";
+import {
+  LoginCapture,
+  OwnedLibrary,
+  ownedGame,
+} from "../../src/lib/stores/types";
 import { FakeStoreHost, storeFixture } from "../helpers/fake-store-host";
 
 const TOKEN = storeFixture("gog", "token.json");
@@ -99,7 +103,14 @@ describe("GOG", () => {
     expect(gog.needsRefresh(session, 5_000_000)).toBe(true);
   });
 
-  it("takes a numeric user id, and refuses an answer without tokens", () => {
+  it("takes a numeric user id with all its digits, and refuses an answer without tokens", () => {
+    // (GOG's user ids are past 2^53, where a JavaScript number loses digits)
+    expect(
+      gog.parseTokenText(
+        gog.TOKEN_URL,
+        '{"access_token":"a","refresh_token":"r","user_id":48628349957132247,"expires_in":3600}',
+      ).user_id,
+    ).toBe("48628349957132247");
     expect(
       gog.parseToken({
         access_token: "a",
@@ -108,6 +119,18 @@ describe("GOG", () => {
         expires_in: 3600,
       }).user_id,
     ).toBe("42");
+    // A number that already lost its digits is no user id.
+    expect(() =>
+      gog.parseToken({
+        access_token: "a",
+        refresh_token: "r",
+        user_id: 48628349957132247,
+        expires_in: 3600,
+      }),
+    ).toThrow(/no tokens/);
+    expect(() =>
+      gog.parseTokenText(gog.TOKEN_URL, '<html>{"access_token":"SECRET"}'),
+    ).toThrow(/Unexpected response from https:\/\/auth\.gog\.com\/token/);
     expect(() =>
       gog.parseToken({ error: "invalid_grant", refresh_token: "SECRET" }),
     ).toThrow(/no tokens/);
@@ -336,6 +359,8 @@ describe("GOG account", () => {
   let issued = 0;
   let validToken = "";
   let expiresIn = 3600;
+  // GOG stops answering after the first page of the library.
+  let pageTwoHangs = false;
   const tokenAnswer = () => {
     issued++;
     validToken = `access-${issued}`;
@@ -373,6 +398,9 @@ describe("GOG account", () => {
       return { body: USER };
     }
     if (u.pathname === "/account/getFilteredProducts") {
+      if (u.searchParams.get("page") !== "1" && pageTwoHangs) {
+        return new Promise<never>(() => {});
+      }
       return { body: u.searchParams.get("page") === "1" ? PAGE_1 : PAGE_2 };
     }
     return { status: 404 };
@@ -381,6 +409,8 @@ describe("GOG account", () => {
     issued = 0;
     validToken = "";
     expiresIn = 3600;
+    pageTwoHangs = false;
+    host.requests.length = 0;
     setStoreHost(host);
   });
   afterEach(() => refresh.deleteAccount("gog"));
@@ -444,5 +474,46 @@ describe("GOG account", () => {
     expect(isLoginRejected(err)).toBe(true);
     expect(refresh.accountStatus("gog").needsSignIn).toBe(true);
     expect(refresh.accountStatus("gog").lastError).not.toContain("refresh-");
+  });
+
+  it("a refresh past its deadline ends its requests and saves nothing", async () => {
+    // A token that isn't about to expire and a known name: the refresh only
+    // lists the games.
+    issued = 1;
+    validToken = "access-1";
+    storage.saveSession(
+      "gog",
+      {
+        accountName: "player_one",
+        data: {
+          accessToken: "access-1",
+          refreshToken: "refresh-1",
+          userId: "48628349957132247",
+          expiresAt: Date.now() + 3600 * 1000,
+        },
+      },
+      host,
+    );
+    const before: OwnedLibrary = {
+      accountName: "player_one",
+      fetchedAt: 5,
+      games: [ownedGame("gog", "1", "Old Game")],
+      partial: false,
+    };
+    storage.saveLibrary("gog", before);
+    pageTwoHangs = true;
+
+    const err = await refresh
+      .refreshLibrary("gog", { deadlineMs: 100 })
+      .catch((e) => e);
+    expect(isTransient(err)).toBe(true);
+    expect(err.message).toContain("took longer than");
+    // The request that hung was ended with the refresh, not left running.
+    const pageTwo = host.requests.find((r) => r.url.includes("page=2"));
+    expect(pageTwo?.init.signal?.aborted).toBe(true);
+    const sent = host.requests.length;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(host.requests).toHaveLength(sent);
+    expect(refresh.cachedLibrary("gog")).toEqual(before);
   });
 });

@@ -10,7 +10,11 @@ import {
   UserExceptions,
 } from "../models";
 import { FileParser } from "../lib/file-parser";
-import { storeLibraryStamp } from "../lib/parsers/store-account.parser";
+import {
+  installedLocationsOf,
+  setInstalledLocations,
+  storeAccountStamp,
+} from "../lib/parsers/store-account.parser";
 import { ParseCache } from "./parse-cache";
 import { FuzzyMatcher } from "../lib/fuzzy-matcher";
 import { VariableParser } from "../lib/variable-parser";
@@ -475,6 +479,9 @@ export class ParsersStore {
       if (this.isConfigurationValid(config)) valid.push(config);
       else invalid.push(config.configTitle || this.lang.text.noTitle);
     }
+    // A Store Account parser leaves out games installed where the user's
+    // platform parsers read, not only where launchers keep games by default.
+    setInstalledLocations(installedLocationsOf([...this.configs, ...configs]));
     const settings = this.settings.get();
     if (!reuse) {
       const parsedData = await this.fileParser.executeFileParser(
@@ -483,7 +490,8 @@ export class ParsersStore {
       );
       return { parsedData, invalid, skipped, reparsed: valid.length };
     }
-    // (keys before parsing: the file parser fills in the configs it's given)
+    // (keys before parsing: the file parser fills in the configs it's given;
+    // the cache keeps results under these)
     const global = JSON.stringify([
       settings.environmentVariables,
       this.variablesVersion,
@@ -510,6 +518,11 @@ export class ParsersStore {
         exceptions,
       ),
     );
+    // The run as it ended: a Store Account parser may have fetched its
+    // library meanwhile, and the next refresh where nothing else changed
+    // must still parse everything again. (Only for that: results stay under
+    // the keys from before, so a library fetched since is parsed again.)
+    this.parseCache.ranWith(configs.map(keyOf), exceptions);
     const parsedConfigs = valid.map(
       (c) => plan.reuse.get(c.parserId) ?? fresh[toParse.indexOf(c)],
     );
@@ -526,11 +539,11 @@ export class ParsersStore {
   }
 
   // What a parser's result depends on besides its settings and the global
-  // inputs: a Store Account parser's library as last fetched, so a library
-  // refreshed since is parsed again.
+  // inputs: a Store Account parser's library as last fetched (so a library
+  // refreshed since is parsed again) and where installed games are read.
   private dataStamp(config: UserConfiguration) {
     return config.parserType === "Store Account"
-      ? storeLibraryStamp(config.parserInputs)
+      ? storeAccountStamp(config.parserInputs)
       : "";
   }
 

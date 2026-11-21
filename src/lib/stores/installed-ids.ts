@@ -2,13 +2,16 @@
 // id: an owned game whose id is here is installed, so the Store Account
 // parser leaves it out (the installed game has its own shortcut). Read
 // from the same places SRM's platform parsers read (src/lib/helpers/
-// launchers), plus Heroic's lists on Linux.
+// launchers, and the folders the user's parsers are set to), plus Heroic's
+// lists and the itch Flatpak on Linux.
 //
 // Every reader returns nothing rather than fail: a launcher that isn't
 // there, or a file that can't be read, means no installed games from it.
 
 import * as fs from "fs-extra";
 import * as os from "os";
+import * as path from "path";
+import * as _ from "lodash";
 import { XMLParser, XMLValidator } from "fast-xml-parser";
 import languageEncoding from "detect-file-encoding-and-language";
 import * as json from "../helpers/json";
@@ -21,12 +24,12 @@ import {
   amazonGamesDb,
   defaultAmazonGamesExe,
   defaultEpicManifestsDir,
-  defaultItchAppDataDir,
   defaultLegendaryInstalledFile,
   eaInstallerDataFiles,
   epicManifestFiles,
   galaxyPaths,
   heroicConfigDirs,
+  itchAppDataDirs,
   itchDbPath,
   readBattleNetProducts,
   readEpicManifest,
@@ -43,9 +46,20 @@ export interface InstalledGame {
   title?: string;
 }
 
+// The places the user's platform parsers are set to read (their overrides of
+// where a launcher keeps its data): read as well as the default places, so a
+// game installed there counts as installed too.
+export interface InstalledLocations {
+  epicManifestsDirs?: string[];
+  legendaryInstalledFiles?: string[];
+  amazonGamesExes?: string[];
+  eaGamesDirs?: string[];
+  itchAppDataDirs?: string[];
+}
+
 // Where to look; each defaults to where the launcher keeps its data on this
 // system (tests point them at temporary folders).
-export interface InstalledOptions {
+export interface InstalledOptions extends InstalledLocations {
   osType?: string;
   home?: string;
   appData?: string;
@@ -68,6 +82,7 @@ export async function readInstalledGames(
 ): Promise<InstalledGame[]> {
   const osType = options.osType ?? os.type();
   const home = options.home ?? os.homedir();
+  const onWindows = osType == "Windows_NT";
   const heroicDirs =
     options.heroicConfigDirs ??
     (osType == "Linux" ? heroicConfigDirs(home) : []);
@@ -75,20 +90,33 @@ export async function readInstalledGames(
     heroicDirs.map((dir) =>
       quietly(() => tagged(store, readHeroicInstalled(dir, runner))),
     );
+  // Reads each place once: the defaults and the parsers' own.
+  const fromEach = (
+    places: (string | undefined)[],
+    read: (place: string) => InstalledGame[] | Promise<InstalledGame[]>,
+  ) =>
+    _.uniqBy(
+      places.filter((place) => !!place),
+      (place) => path.resolve(place),
+    ).map((place) => quietly(() => read(place)));
   let sources: Promise<InstalledGame[]>[] = [];
   switch (store) {
     case "epic":
       sources = [
-        quietly(() =>
-          epicInstalled(
+        ...fromEach(
+          [
             options.epicManifestsDir ?? defaultEpicManifestsDir(osType, home),
-          ),
+            ...(options.epicManifestsDirs ?? []),
+          ],
+          epicInstalled,
         ),
-        quietly(() =>
-          legendaryInstalled(
+        ...fromEach(
+          [
             options.legendaryInstalledFile ??
               defaultLegendaryInstalledFile(home),
-          ),
+            ...(options.legendaryInstalledFiles ?? []),
+          ],
+          legendaryInstalled,
         ),
         ...fromHeroic("legendary"),
       ];
@@ -106,25 +134,26 @@ export async function readInstalledGames(
       break;
     case "amazon":
       sources = [
-        quietly(() =>
-          osType == "Windows_NT" || options.amazonGamesExe
-            ? amazonInstalled(
-                options.amazonGamesExe ??
-                  defaultAmazonGamesExe(options.appData),
-              )
-            : [],
+        // (the app is Windows-only: elsewhere only where a parser points)
+        ...fromEach(
+          [
+            options.amazonGamesExe ??
+              (onWindows ? defaultAmazonGamesExe(options.appData) : undefined),
+            ...(options.amazonGamesExes ?? []),
+          ],
+          amazonInstalled,
         ),
         ...fromHeroic("nile"),
       ];
       break;
     case "ea":
-      sources = [
-        quietly(() =>
-          osType == "Windows_NT" || options.eaGamesDir
-            ? eaInstalled(options.eaGamesDir ?? DEFAULT_EA_GAMES_DIR)
-            : [],
-        ),
-      ];
+      sources = fromEach(
+        [
+          options.eaGamesDir ?? (onWindows ? DEFAULT_EA_GAMES_DIR : undefined),
+          ...(options.eaGamesDirs ?? []),
+        ],
+        eaInstalled,
+      );
       break;
     case "battlenet":
       sources = [
@@ -138,14 +167,15 @@ export async function readInstalledGames(
       ];
       break;
     case "itch":
-      sources = [
-        quietly(() =>
-          itchInstalled(
-            options.itchAppDataDir ??
-              defaultItchAppDataDir(osType, home, options.appData),
-          ),
-        ),
-      ];
+      sources = fromEach(
+        [
+          ...(options.itchAppDataDir !== undefined
+            ? [options.itchAppDataDir]
+            : itchAppDataDirs(osType, home, options.appData)),
+          ...(options.itchAppDataDirs ?? []),
+        ],
+        itchInstalled,
+      );
       break;
     case "humble":
       // (Humble has no launcher)

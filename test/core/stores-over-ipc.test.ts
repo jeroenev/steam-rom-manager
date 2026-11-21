@@ -16,6 +16,10 @@ import {
 } from "../../src/lib/stores/host";
 import * as refresh from "../../src/lib/stores/refresh";
 import { STORE_KEYS } from "../../src/lib/stores/types";
+import {
+  StoreAccountParser,
+  setStoreAccountEnvironment,
+} from "../../src/lib/parsers/store-account.parser";
 import { makeConfig, makeSettings } from "../helpers/fixtures";
 import { makeLogger, settleCoresAfterEach } from "../helpers/services-harness";
 import { makeRpcPair } from "../helpers/rpc-pair";
@@ -241,5 +245,56 @@ describe("store accounts over IPC", () => {
     expect(online.service.status("itch").gameCount).toBeGreaterThan(0);
     // (its parser is disabled)
     expect(online.service.status("gog").gameCount).toBeNull();
+  });
+
+  it("offline mode keeps the Store Account parser off the network: it uses the games fetched before", async () => {
+    await refresh.completeLogin(refresh.pendingLogin("itch"), {
+      pasted: ITCH_KEY,
+    });
+    const fetched = await refresh.refreshLibrary("itch");
+    expect(fetched.games.length).toBeGreaterThan(0);
+    // Six hours and more later: old.
+    refresh.setStoreClock(() => Date.now() + refresh.LIBRARY_MAX_AGE_MS * 2);
+    setStoreAccountEnvironment({
+      launchers: () => ({
+        osType: "Linux",
+        heroicStores: [],
+        opener: "/usr/bin/xdg-open",
+        flatpak: "/usr/bin/flatpak",
+      }),
+      installed: async () => [],
+    });
+    const parse = () =>
+      new StoreAccountParser().execute([], {
+        storeAccount: "itch",
+        storeSkipPrereleases: false,
+        storeSkipInstalledElsewhere: false,
+        storeSkipSteamInstalled: false,
+      });
+    try {
+      fs.writeFileSync(
+        paths.userSettings,
+        JSON.stringify(makeSettings({ offlineMode: true })),
+      );
+      await makeService();
+      host.requests.length = 0;
+      const offline = await parse();
+      expect(host.requests).toEqual([]);
+      expect(offline.success.map((s) => s.extractedTitle)).toEqual(
+        fetched.games.map((g) => g.title),
+      );
+
+      // (the same, online: fetched again)
+      fs.writeFileSync(
+        paths.userSettings,
+        JSON.stringify(makeSettings({ offlineMode: false })),
+      );
+      await makeService();
+      await parse();
+      expect(host.requests.length).toBeGreaterThan(0);
+    } finally {
+      refresh.setStoreClock();
+      setStoreAccountEnvironment();
+    }
   });
 });

@@ -4,7 +4,7 @@ import * as fs from "fs-extra";
 import * as os from "os";
 import * as path from "path";
 import { SqliteWrapper } from "../helpers/sqlite";
-import { defaultItchAppDataDir, itchDbPath } from "../helpers/launchers";
+import { findItchAppDataDir, itchDbPath } from "../helpers/launchers";
 
 export class ItchIoParser implements GenericParser {
   private get lang() {
@@ -45,7 +45,7 @@ export class ItchIoParser implements GenericParser {
         }
 
         const itchIoAppDataDir =
-          inputs.itchIoAppDataOverride || defaultItchAppDataDir();
+          inputs.itchIoAppDataOverride || findItchAppDataDir();
         const dbPath = itchDbPath(itchIoAppDataDir);
         if (!fs.existsSync(dbPath)) {
           return reject(this.lang.errors.databaseNotFound);

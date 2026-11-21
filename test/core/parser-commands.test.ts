@@ -101,6 +101,21 @@ describe("parser commands (headless Core)", () => {
     }
   });
 
+  it("a new Store Account parser: the Not installed collection, its options on, no account kept", () => {
+    const config = commands.defaultConfig("Store Account");
+    expect(config.steamCategories).toEqual(["Not installed"]);
+    // (the account input is shown, never saved with the parser)
+    expect(config.parserInputs).toEqual({
+      storeAccount: emptyValue("select"),
+      storeInstallWith: "auto",
+      storeSkipPrereleases: true,
+      storeSkipInstalledElsewhere: true,
+      storeSkipSteamInstalled: true,
+    });
+    // (the collection comes with the type)
+    expect(commands.defaultConfig("Glob").steamCategories).toEqual([]);
+  });
+
   it("every option name is unique", () => {
     const flags = commands.allFields().map((f) => f.flag);
     expect(flags.length).toBe(new Set(flags).size);

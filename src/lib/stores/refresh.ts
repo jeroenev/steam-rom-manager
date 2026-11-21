@@ -2,10 +2,12 @@
 // that keep a bad answer from emptying a library. Ported from BoilR's
 // boilr-stores lib.rs.
 //
-// Getting the games of an account never waits on a store: the Store Account
-// parser reads cachedLibrary(), and the app refreshes libraries that got old
-// in the background (refreshIfStale). A failed refresh keeps the last list,
-// so a network problem never takes an account's games out of Steam.
+// The app refreshes libraries that got old in the background at start, and
+// the Store Account parser fetches an old one before it lists its games
+// (refreshIfStale): in the app it waits for that only briefly when there's
+// a list from before, on the command line in full. A failed refresh keeps
+// the last list, so a network problem never takes an account's games out of
+// Steam.
 
 import * as _ from "lodash";
 import { getStoreHost, hostRefreshes, StoreHost } from "./host";

@@ -2,7 +2,7 @@
 
 ## itch.io AppData Path Override
 
-By default Steam ROM Manager assumes your itch.io app data is located at `%APPDATA%\itch` on windows `$HOME/.config/itch` on linux and `$HOME/Library/Application Support/itch` on macos.
+By default Steam ROM Manager assumes your itch.io app data is located at `%APPDATA%\itch` on windows `$HOME/.config/itch` on linux and `$HOME/Library/Application Support/itch` on macos. On linux it uses the itch Flatpak's `$HOME/.var/app/io.itch.itch/config/itch` instead when only that one has the app's database.
 This field allows you to override that path if your itch.io user data is elsewhere.
 
 ## itch.io Windows-on-Linux Install Drive Redirect

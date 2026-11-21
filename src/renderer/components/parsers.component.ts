@@ -313,6 +313,24 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
                   this.currentDoc.content = input.info;
                   this.updateShowMarkdown(true);
                 };
+                // (only while the parser is of this input's type: a hidden
+                // input of another type is never an error)
+                const validateInput = (self: any, path: string[]) => {
+                  if (
+                    parserInfo.superTypesMap[parsers[i]] !==
+                      parserInfo.ArtworkOnlyType &&
+                    this.userForm.get("parserType").value === parsers[i]
+                  )
+                    return this.parsersService.validate(
+                      path[0] as keyof UserConfiguration,
+                      {
+                        parser: parsers[i],
+                        input: inputFieldName,
+                        inputData: self.value as string,
+                      },
+                    );
+                  else return null;
+                };
                 if (["path", "dir", "text"].includes(input.inputType)) {
                   parserInputs[inputFieldName] = new NestedFormElement.Input({
                     path: ["path", "dir"].includes(input.inputType)
@@ -326,22 +344,7 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
                     initialValue: input.initialValue as string,
                     label: input.label,
                     isHidden: isHidden,
-                    onValidate: (self, path) => {
-                      if (
-                        parserInfo.superTypesMap[parsers[i]] !==
-                          parserInfo.ArtworkOnlyType &&
-                        this.userForm.get("parserType").value === parsers[i]
-                      )
-                        return this.parsersService.validate(
-                          path[0] as keyof UserConfiguration,
-                          {
-                            parser: parsers[i],
-                            input: inputFieldName,
-                            inputData: self.value as string,
-                          },
-                        );
-                      else return null;
-                    },
+                    onValidate: validateInput,
                     onInfoClick: onInfoClick,
                   });
                 } else if (input.inputType == "toggle") {
@@ -367,6 +370,8 @@ export class ParsersComponent implements AfterViewInit, OnDestroy {
                     allowEmpty: false,
                     values: input.allowedValues,
                     initialValue: input.initialValue as string,
+                    required: !!input.required,
+                    onValidate: validateInput,
                     onInfoClick: onInfoClick,
                     isHidden: isHidden,
                   });

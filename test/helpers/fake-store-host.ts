@@ -48,10 +48,25 @@ export class FakeStoreHost implements StoreHost {
     return async (url: string, init: StoreRequestInit = {}) => {
       const request = { store, url, init };
       this.requests.push(request);
-      if (init.signal?.aborted) {
-        throw new Error("This operation was aborted");
+      // An abort ends the request also while the handler is still at it, as
+      // a real fetch's does.
+      const signal = init.signal;
+      const aborted = () =>
+        signal?.reason instanceof Error
+          ? signal.reason
+          : new Error("This operation was aborted");
+      if (signal?.aborted) {
+        throw aborted();
       }
-      const answer = await this.handler(request);
+      const answer = await new Promise<FakeAnswer | Error>(
+        (resolve, reject) => {
+          const onAbort = () => reject(aborted());
+          signal?.addEventListener("abort", onAbort, { once: true });
+          Promise.resolve(this.handler(request))
+            .then(resolve, reject)
+            .finally(() => signal?.removeEventListener("abort", onAbort));
+        },
+      );
       if (answer instanceof Error) {
         throw answer;
       }

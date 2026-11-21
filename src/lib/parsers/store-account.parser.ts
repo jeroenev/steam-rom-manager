@@ -1,16 +1,26 @@
-import { GenericParser, ParsedData, ParserInfo } from "../../models";
+import {
+  GenericParser,
+  ParsedData,
+  ParserInfo,
+  ParserType,
+  UserConfiguration,
+} from "../../models";
 import { APP } from "../../variables";
 import * as path from "path";
+import * as _ from "lodash";
 import {
   InstallWith,
   InstalledGame,
+  InstalledLocations,
   Launchers,
   OwnedGame,
+  OwnedLibrary,
   STORE_KEYS,
   STORE_NAMES,
   StoreKey,
   cachedLibrary,
   detectLaunchers,
+  getStoreHost,
   installTarget,
   isPrerelease,
   isStoreKey,
@@ -33,13 +43,17 @@ import { messageOf } from "../stores/http";
 // fakes.
 export interface StoreAccountEnvironment {
   launchers(): Launchers;
-  installed(store: StoreKey): Promise<InstalledGame[]>;
+  // (`locations`: where the user's parsers read, besides the defaults)
+  installed(
+    store: StoreKey,
+    locations: InstalledLocations,
+  ): Promise<InstalledGame[]>;
   steamTitles(steamDir: string): Set<string>;
 }
 
 const systemEnvironment: StoreAccountEnvironment = {
   launchers: () => detectLaunchers(),
-  installed: (store) => readInstalledGames(store),
+  installed: (store, locations) => readInstalledGames(store, locations),
   steamTitles: (steamDir) => steamInstalledTitles(steamDir),
 };
 
@@ -50,6 +64,86 @@ export function setStoreAccountEnvironment(
   env?: Partial<StoreAccountEnvironment>,
 ) {
   environment = { ...systemEnvironment, ...env };
+}
+
+// Where the user's platform parsers read their launchers' data, besides the
+// default places (ParsersStore sets it before a run from all the parsers):
+// a game installed there is installed too.
+let installedLocations: InstalledLocations = {};
+
+export function setInstalledLocations(locations: InstalledLocations) {
+  installedLocations = locations;
+}
+
+// The places the platform parsers among `configs` are set to read (each
+// only where its override is set). Disabled parsers count too: like the
+// default places, they say where a launcher keeps its games.
+export function installedLocationsOf(
+  configs: readonly UserConfiguration[],
+): InstalledLocations {
+  const set = (type: ParserType, input: string) =>
+    _.uniq(
+      configs
+        .filter((config) => config.parserType === type)
+        .map((config) => config.parserInputs?.[input])
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter((value) => value !== ""),
+    ).sort();
+  return {
+    epicManifestsDirs: set("Epic", "epicManifests"),
+    legendaryInstalledFiles: set("Legendary", "legendaryInstalledFile"),
+    amazonGamesExes: set("Amazon Games", "amazonGamesExeOverride"),
+    eaGamesDirs: set("EA Desktop", "eaGamesDir"),
+    itchAppDataDirs: set("itch.io", "itchIoAppDataOverride"),
+  };
+}
+
+// In the app, how long the parser waits for an old library to be fetched
+// before it uses the list from before (the fetch goes on, and the next Add
+// Games parses what it brings). The command line waits in full: it has no
+// window to hold up, and nothing fetches the library for it. Core.start
+// sets it; null waits in full.
+export const APP_REFRESH_WAIT_MS = 15 * 1000;
+let refreshWaitMs: number | null = null;
+
+export function setStoreAccountRefreshWait(ms: number | null) {
+  refreshWaitMs = ms;
+}
+
+// The library of `store`: fetched again first when it's old (refreshIfStale
+// falls back to the list from before itself when that fails).
+async function currentLibrary(store: StoreKey): Promise<OwnedLibrary> {
+  const refresh = refreshIfStale(store);
+  const waitMs = refreshWaitMs;
+  if (waitMs === null || !cachedLibrary(store)) {
+    return refresh;
+  }
+  refresh.catch(() => undefined); // (an error is the account's: it shows it)
+  let timer: ReturnType<typeof setTimeout>;
+  const waited = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), waitMs);
+  });
+  try {
+    const fetched = await Promise.race([refresh, waited]);
+    if (fetched) {
+      return fetched;
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+  // (read now, not before the wait: a sign-out, or a sign-in to another
+  // account, meanwhile wins)
+  const before = signedIn(store) ? cachedLibrary(store) : null;
+  if (!before) {
+    throw new Error(
+      `The ${STORE_NAMES[store]} account changed while its games were being fetched`,
+    );
+  }
+  getStoreHost().log?.(
+    `Using the ${STORE_NAMES[store]} games fetched on ${new Date(before.fetchedAt).toISOString()}; they are being fetched again in the background.`,
+  );
+  return before;
 }
 
 export interface OwnedFilter {
@@ -104,8 +198,8 @@ function installedIds(store: StoreKey, games: InstalledGame[]): Set<string> {
 
 // What a parse depends on besides the parser's settings (SRM's parse cache,
 // #908): the library as last fetched, so a refreshed library is parsed
-// again.
-export function storeLibraryStamp(inputs: { [key: string]: any }): string {
+// again, and where installed games are read (other parsers' folders).
+export function storeAccountStamp(inputs: { [key: string]: any }): string {
   const store = inputs?.storeAccount;
   if (!isStoreKey(store)) {
     return "";
@@ -114,6 +208,7 @@ export function storeLibraryStamp(inputs: { [key: string]: any }): string {
     store,
     signedIn(store),
     cachedLibrary(store)?.fetchedAt ?? null,
+    installedLocations,
   ]);
 }
 
@@ -219,18 +314,21 @@ export class StoreAccountParser implements GenericParser {
     if (!signedIn(store)) {
       throw this.lang.errors.notSignedIn__i.interpolate({ store: name });
     }
-    // (fetched again first when it's old and this SRM can; otherwise, and
-    // when that fails, as last fetched)
-    let library = cachedLibrary(store);
+    // (fetched again first when it's old and this SRM can; refreshIfStale
+    // itself falls back to the last fetched list while the account is
+    // signed in)
+    let library: OwnedLibrary;
     try {
-      library = await refreshIfStale(store);
+      library = await currentLibrary(store);
     } catch (err) {
-      if (!library) {
-        throw this.lang.errors.noLibrary__i.interpolate({
-          store: name,
-          error: messageOf(err),
-        });
+      // Signed out, or into another account, while it was fetched: that wins.
+      if (!signedIn(store)) {
+        throw this.lang.errors.notSignedIn__i.interpolate({ store: name });
       }
+      throw this.lang.errors.noLibrary__i.interpolate({
+        store: name,
+        error: messageOf(err),
+      });
     }
 
     // (an option left unset is on: these are on by default)
@@ -239,12 +337,14 @@ export class StoreAccountParser implements GenericParser {
       skipInstalledElsewhere: inputs.storeSkipInstalledElsewhere !== false,
       skipSteamInstalled: inputs.storeSkipSteamInstalled !== false,
     };
-    const sameStore = await environment.installed(store);
+    const sameStore = await environment.installed(store, installedLocations);
     const titles = new Set<string>();
     if (filter.skipInstalledElsewhere) {
       for (const other of STORE_KEYS) {
         const games =
-          other === store ? sameStore : await environment.installed(other);
+          other === store
+            ? sameStore
+            : await environment.installed(other, installedLocations);
         for (const game of games) {
           if (game.title) {
             titles.add(normalizeTitle(game.title));

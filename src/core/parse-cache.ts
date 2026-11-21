@@ -90,6 +90,13 @@ export class ParseCache {
     return { parse, reuse };
   }
 
+  // The run as it ended: a parse may itself change what a key covers (a
+  // Store Account parser fetching its library), and the next refresh where
+  // nothing changed must still parse everything again.
+  ranWith(chosen: string[], exceptions: UserExceptions) {
+    this.lastRun = JSON.stringify([chosen, exceptions]);
+  }
+
   // A parser's fresh result (as parsed with these exceptions).
   store(
     parserId: string,
@@ -127,7 +134,9 @@ export class ParseCache {
     if (!changes.length) return false;
     return entry.parsed.files.some((file) => {
       const id = gameMatchId(entry.parsed.parserType, file);
-      return changes.some((rule) => !!ruleFor([rule], id, file.titles.extracted));
+      return changes.some(
+        (rule) => !!ruleFor([rule], id, file.titles.extracted),
+      );
     });
   }
 

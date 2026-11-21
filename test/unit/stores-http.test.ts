@@ -187,4 +187,39 @@ describe("store HTTP helpers", () => {
     expect(notJson.message).toContain("<html>");
     expect(notJson.message).not.toContain("SECRET");
   });
+
+  it("ends a request that hangs: its timeout, the refresh's deadline, the caller's signal", async () => {
+    // A store that never answers.
+    const host = new FakeStoreHost(() => new Promise(() => {}));
+    const hangs = async (
+      http: StoreHttp,
+      abort: () => void = () => undefined,
+      init = {},
+    ) => {
+      const sent = http.send("https://store.example/slow?token=SECRET", init);
+      abort();
+      const err = await sent.catch((e) => e);
+      expect(isTransient(err)).toBe(true);
+      expect(err.message).not.toContain("SECRET");
+      const request = host.requests[host.requests.length - 1];
+      expect(request.init.signal!.aborted).toBe(true);
+    };
+
+    await hangs(new StoreHttp(host.fetchFor("gog"), { timeoutMs: 20 }));
+    const deadline = new AbortController();
+    await hangs(
+      new StoreHttp(host.fetchFor("gog"), { signal: deadline.signal }),
+      () => deadline.abort(),
+    );
+    // Both signals count: the refresh's and the request's own.
+    const caller = new AbortController();
+    await hangs(
+      new StoreHttp(host.fetchFor("gog"), {
+        signal: new AbortController().signal,
+      }),
+      () => caller.abort(),
+      { signal: caller.signal },
+    );
+    expect(host.requests).toHaveLength(3);
+  });
 });

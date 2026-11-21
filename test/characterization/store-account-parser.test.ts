@@ -13,6 +13,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -23,12 +24,17 @@ import { ParsersStore } from "../../src/core/parsers-store";
 import {
   gamesToAdd,
   setStoreAccountEnvironment,
-  storeLibraryStamp,
+  setStoreAccountRefreshWait,
+  storeAccountStamp,
 } from "../../src/lib/parsers/store-account.parser";
 import { readOnlyStoreHost, setStoreHost } from "../../src/lib/stores/host";
 import * as refresh from "../../src/lib/stores/refresh";
 import * as storage from "../../src/lib/stores/storage";
-import { InstalledGame } from "../../src/lib/stores/installed-ids";
+import {
+  InstalledGame,
+  InstalledOptions,
+  readInstalledGames,
+} from "../../src/lib/stores/installed-ids";
 import { Launchers } from "../../src/lib/stores/targets";
 import {
   OwnedGame,
@@ -36,7 +42,11 @@ import {
   StoreKey,
   ownedGame,
 } from "../../src/lib/stores/types";
-import { EXPLORER_EXE, galaxyPaths } from "../../src/lib/helpers/launchers";
+import {
+  EXPLORER_EXE,
+  galaxyPaths,
+  itchDbPath,
+} from "../../src/lib/helpers/launchers";
 import { generateShortAppId } from "../../src/lib/helpers/steam/generate-app-id";
 import {
   makeConfig,
@@ -45,7 +55,13 @@ import {
   tempDir,
 } from "../helpers/fixtures";
 import { makeLogger } from "../helpers/services-harness";
-import { FakeStoreHost } from "../helpers/fake-store-host";
+import {
+  FakeHandler,
+  FakeStoreHost,
+  storeFixture,
+} from "../helpers/fake-store-host";
+
+const { DatabaseSync } = require("node:sqlite");
 
 // SRM's GOG Galaxy parser starts games with this program in launcher mode.
 const GALAXY_EXE = galaxyPaths("Windows_NT").exePath;
@@ -126,10 +142,59 @@ function library(store: StoreKey, games: OwnedGame[], fetchedAt = Date.now()) {
   });
 }
 
+// A GOG login whose token is good for an hour and whose name is known: a
+// refresh only lists the games.
+function gogLogin(host: FakeStoreHost, accountName = "player") {
+  return refresh.saveNewLogin(
+    "gog",
+    {
+      accountName,
+      data: {
+        accessToken: "access",
+        refreshToken: "refresh",
+        userId: "1",
+        expiresAt: Date.now() + 3600 * 1000,
+      },
+    },
+    host,
+  );
+}
+
+// GOG's library, from the fixtures.
+const gogServer: FakeHandler = ({ url }) => {
+  const u = new URL(url);
+  if (u.pathname !== "/account/getFilteredProducts") {
+    return { status: 404 };
+  }
+  return {
+    body: storeFixture(
+      "gog",
+      u.searchParams.get("page") === "1"
+        ? "products_page1.json"
+        : "products_page2.json",
+    ),
+  };
+};
+
+const titles = (parsed: { parsedConfigs: any[] }) =>
+  parsed.parsedConfigs[0].files.map((f: any) => f.titles.final).sort();
+
 describe("Store Account parser (characterization)", () => {
   let root: string;
   let steamDir: string;
-  const host = new FakeStoreHost(() => new Error("no network in this test"));
+  const noNetwork: FakeHandler = () => new Error("no network in this test");
+  const host = new FakeStoreHost(noNetwork);
+  const parsersStore = () =>
+    new ParsersStore(
+      makeLogger().service as any,
+      { get: () => makeSettings() } as any,
+      {
+        fuzzyMatcher: new FuzzyMatcher(undefined, {
+          totalGames: 0,
+          games: [],
+        }),
+      },
+    );
 
   const config = (inputs: object, extra: object = {}) =>
     makeConfig({
@@ -182,6 +247,8 @@ describe("Store Account parser (characterization)", () => {
   });
   afterEach(async () => {
     setStoreAccountEnvironment();
+    setStoreAccountRefreshWait(null);
+    host.handler = noNetwork;
     for (const store of STORE_KEYS) {
       await refresh.deleteAccount(store);
     }
@@ -271,16 +338,7 @@ describe("Store Account parser (characterization)", () => {
   });
 
   it("Add Games' refresh parses a Store Account parser again once its library was fetched again", async () => {
-    const parsers = new ParsersStore(
-      makeLogger().service as any,
-      { get: () => makeSettings() } as any,
-      {
-        fuzzyMatcher: new FuzzyMatcher(undefined, {
-          totalGames: 0,
-          games: [],
-        }),
-      },
-    );
+    const parsers = parsersStore();
     const gog = config({});
     const itch = (title: string) =>
       config({ storeAccount: "itch" }, { configTitle: title, parserId: "i" });
@@ -289,18 +347,166 @@ describe("Store Account parser (characterization)", () => {
     // (only the edited parser)
     const second = await parsers.executeFileParserReusing(gog, itch("B"));
     expect(second.reparsed).toBe(1);
-    const stamp = storeLibraryStamp(gog.parserInputs);
+    const stamp = storeAccountStamp(gog.parserInputs);
     library(
       "gog",
       [...gogGames, ownedGame("gog", "9", "Gris")],
       Date.now() + 1,
     );
-    expect(storeLibraryStamp(gog.parserInputs)).not.toBe(stamp);
+    expect(storeAccountStamp(gog.parserInputs)).not.toBe(stamp);
     const third = await parsers.executeFileParserReusing(gog, itch("C"));
     expect(third.reparsed).toBe(2);
     expect(
       third.parsedData.parsedConfigs[0].files.map((f) => f.titles.final),
     ).toContain("Gris");
+  });
+
+  it("after a run that fetched a library, a refresh where nothing changed still parses everything", async () => {
+    await gogLogin(host);
+    library("gog", gogGames, 1);
+    host.canRefresh = true;
+    host.handler = gogServer;
+    const parsers = parsersStore();
+    const gog = config({});
+    const itch = config(
+      { storeAccount: "itch" },
+      { configTitle: "itch", parserId: "i" },
+    );
+    const first = await parsers.executeFileParserReusing(gog, itch);
+    expect(first.reparsed).toBe(2);
+    // (the parser fetched the old library)
+    expect(refresh.cachedLibrary("gog")!.fetchedAt).toBeGreaterThan(1);
+    // Nothing changed: that's how new or removed files are picked up.
+    const second = await parsers.executeFileParserReusing(gog, itch);
+    expect(second.reparsed).toBe(2);
+  });
+
+  it("options left unset are on", async () => {
+    // (as a parser saved without them has them)
+    const bare = makeConfig({
+      parserType: "Store Account",
+      configTitle: "Owned",
+      parserId: "owned",
+      steamDirectory: steamDir,
+      userAccounts: { specifiedAccounts: ["alice"] },
+      parserInputs: { storeAccount: "gog" },
+    });
+    expect(bare.parserInputs).toEqual({ storeAccount: "gog" });
+    expect(titles(await parse(bare))).toEqual([
+      "Disco Elysium",
+      "The Witcher 3: Wild Hunt",
+    ]);
+  });
+
+  describe("an account signed out of, or into another, while its library is fetched", () => {
+    // GOG answers once the test lets it.
+    let asked: Promise<void>;
+    let answer: () => void;
+    beforeEach(async () => {
+      await gogLogin(host);
+      library("gog", gogGames, 1);
+      host.canRefresh = true;
+      let arrived: () => void;
+      asked = new Promise((resolve) => (arrived = resolve));
+      const answered = new Promise<void>((resolve) => (answer = resolve));
+      host.handler = async (request) => {
+        arrived();
+        await answered;
+        return gogServer(request);
+      };
+    });
+
+    it("signed out: the parser has no games of the old login", async () => {
+      const parsed = parse(config({}));
+      await asked;
+      await refresh.deleteAccount("gog");
+      answer();
+      await expect(parsed).rejects.toThrow("Not signed in to GOG");
+    });
+
+    it("another account: the parser has no games of the old one", async () => {
+      const parsed = parse(config({}));
+      await asked;
+      await gogLogin(host, "someone else");
+      answer();
+      await expect(parsed).rejects.toThrow(
+        "The games of the GOG account haven't been fetched",
+      );
+    });
+  });
+
+  it("in the app, an old library that takes long to fetch is waited for briefly, then the list from before is used", async () => {
+    await gogLogin(host);
+    library("gog", gogGames, 1);
+    host.canRefresh = true;
+    let answer: (() => void) | undefined;
+    host.handler = () =>
+      new Promise((resolve) => {
+        answer = () => resolve(new Error("gone"));
+      });
+    setStoreAccountRefreshWait(50);
+    expect(titles(await parse(config({})))).toEqual([
+      "Disco Elysium",
+      "The Witcher 3: Wild Hunt",
+    ]);
+    expect(host.logs.join("\n")).toContain(
+      "they are being fetched again in the background",
+    );
+    // The fetch goes on meanwhile; end it.
+    await vi.waitFor(() => expect(answer).toBeDefined());
+    answer!();
+    await vi.waitFor(() =>
+      expect(refresh.accountStatus("gog").refreshing).toBe(false),
+    );
+  });
+
+  it("leaves out games installed where the user's itch.io parser reads, not only where the itch app keeps them by default", async () => {
+    // The itch app's data in a folder of the user's choice, with Celeste
+    // Classic installed.
+    const itchData = path.join(root, "custom-itch");
+    fs.mkdirSync(path.dirname(itchDbPath(itchData)), { recursive: true });
+    const db = new DatabaseSync(itchDbPath(itchData));
+    db.exec(`create table games (id integer, title text);
+      create table caves (game_id integer, verdict text);
+      insert into games values (107, 'Celeste Classic');
+      insert into caves values (107, '{"basePath":"C:/c"}');`);
+    db.close();
+    // Nowhere else to look.
+    const nowhere: InstalledOptions = {
+      osType: "Linux",
+      home: path.join(root, "no-home"),
+      heroicConfigDirs: [],
+      epicManifestsDir: path.join(root, "none"),
+      legendaryInstalledFile: path.join(root, "none.json"),
+      galaxyDb: path.join(root, "none.db"),
+      gogRegistry: false,
+      itchAppDataDir: path.join(root, "none"),
+    };
+    setStoreAccountEnvironment({
+      launchers: () => windows,
+      installed: (store, locations) =>
+        readInstalledGames(store, { ...nowhere, ...locations }),
+    });
+    const parsers = parsersStore();
+    const owned = config(
+      { storeAccount: "itch", storeSkipPrereleases: false },
+      { configTitle: "itch.io owned" },
+    );
+    const before = await parsers.executeFileParserReusing(owned);
+    expect(titles(before.parsedData)).toEqual([
+      "Celeste Classic",
+      "Shadwen demo",
+    ]);
+    parsers.add(
+      makeConfig({
+        parserType: "itch.io",
+        configTitle: "itch.io",
+        parserInputs: { itchIoAppDataOverride: itchData },
+      }),
+    );
+    // (a parser's folder changing is a change: parsed again)
+    const after = await parsers.executeFileParserReusing(owned);
+    expect(titles(after.parsedData)).toEqual(["Shadwen demo"]);
   });
 });
 

@@ -21,6 +21,7 @@ import {
   domainMatches,
   isLoginRejected,
   loginRejected,
+  messageOf,
   paginate,
   readText,
   snippet,
@@ -144,6 +145,14 @@ function tokenUrl(params: Record<string, string>) {
   return `${TOKEN_URL}?${query}`;
 }
 
+async function requestToken(
+  ctx: StoreContext,
+  params: Record<string, string>,
+): Promise<TokenResponse> {
+  const response = await ctx.http.send(tokenUrl(params));
+  return parseTokenText(response.url, await readText(response));
+}
+
 async function completeLogin(
   _pending: PendingLogin,
   capture: LoginCapture,
@@ -152,15 +161,11 @@ async function completeLogin(
   const code = codeFromCapture(capture);
   let token: TokenResponse;
   try {
-    token = parseToken(
-      await ctx.http.sendJson(
-        tokenUrl({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: REDIRECT_URI,
-        }),
-      ),
-    );
+    token = await requestToken(ctx, {
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: REDIRECT_URI,
+    });
   } catch (err) {
     throw wrapErr(err, "Could not finish the GOG sign-in");
   }
@@ -234,14 +239,10 @@ async function refreshSession(
   const gog = readSession(session);
   let token: TokenResponse;
   try {
-    token = parseToken(
-      await ctx.http.sendJson(
-        tokenUrl({
-          grant_type: "refresh_token",
-          refresh_token: gog.refreshToken,
-        }),
-      ),
-    );
+    token = await requestToken(ctx, {
+      grant_type: "refresh_token",
+      refresh_token: gog.refreshToken,
+    });
   } catch (err) {
     throw refreshFailure(err);
   }
@@ -292,6 +293,27 @@ async function fetchUsername(ctx: StoreContext, gog: GogSession) {
 export function parseUsername(user: any): string | null {
   const name = user?.username;
   return typeof name === "string" && name.trim() !== "" ? name : null;
+}
+
+// The token answer as text. GOG's user ids are past 2^53, where a number
+// loses digits: a numeric user_id keeps the exact digits it was sent with.
+export function parseTokenText(url: string, text: string): TokenResponse {
+  let answer: any;
+  try {
+    answer = JSON.parse(text, ((
+      key: string,
+      value: unknown,
+      context?: { source?: string },
+    ) =>
+      key === "user_id" && typeof value === "number" && context?.source
+        ? context.source
+        : value) as (key: string, value: any) => any);
+  } catch (err) {
+    throw new Error(
+      `Unexpected response from ${withoutQuery(url)}: ${messageOf(err)}. Body starts with: ${snippet(text)}`,
+    );
+  }
+  return parseToken(answer);
 }
 
 // The token answer, checked: an answer without tokens isn't a sign-in.
@@ -497,12 +519,14 @@ export function nextPage(page: ProductsPage, current: number): number | null {
     : null;
 }
 
-// GOG sends ids as numbers in some answers and as text in others.
+// GOG sends ids as numbers in some answers and as text in others. A number
+// past 2^53 has already lost digits, so it's no id (parseTokenText keeps a
+// user id's).
 function idText(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value;
   }
-  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) {
     return String(value);
   }
   return undefined;

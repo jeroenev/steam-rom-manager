@@ -13,6 +13,10 @@ import { SteamWriter } from "./steam-writer";
 import { LibraryReader } from "./library-reader";
 import { UiSupport } from "./ui-support";
 import { StoresStore } from "./stores-store";
+import {
+  APP_REFRESH_WAIT_MS,
+  setStoreAccountRefreshWait,
+} from "../lib/parsers/store-account.parser";
 
 export interface CoreOptions {
   logger: Logger;
@@ -111,8 +115,10 @@ export class Core {
       ),
     };
     // The store accounts the Store Account parsers list: libraries that got
-    // old are fetched again in the background. (The CLI's parsers fetch
-    // what they need when they run.)
+    // old are fetched again in the background, and a parser waits for a
+    // fetch only briefly. (The CLI's parsers fetch what they need when they
+    // run, and wait for it.)
+    setStoreAccountRefreshWait(refresh ? APP_REFRESH_WAIT_MS : null);
     if (refresh) {
       this.ready.parsers
         .then(() => this.stores.refreshInBackground())

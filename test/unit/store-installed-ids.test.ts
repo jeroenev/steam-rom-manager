@@ -228,6 +228,68 @@ describe("installed store ids", () => {
     ).toEqual(new Set(["284880"]));
   });
 
+  it("itch: the Flatpak's database too, on Linux", async () => {
+    const home = path.join(root, "deck");
+    makeDb(
+      "deck/.var/app/io.itch.itch/config/itch/db/butler.db",
+      `create table games (id integer, title text);
+       create table caves (game_id integer, verdict text);
+       insert into games values (7, 'Flatpak Game');
+       insert into caves values (7, '{"basePath":"/f"}');`,
+    );
+    const games = await installed.readInstalledGames("itch", {
+      ...nowhere,
+      home,
+      itchAppDataDir: undefined,
+    });
+    expect(games).toEqual([{ store: "itch", id: "7", title: "Flatpak Game" }]);
+  });
+
+  it("also reads where the user's parsers are set to read, each place once", async () => {
+    write(
+      "custom/Manifests/c.item",
+      JSON.stringify({ AppName: "Custom", DisplayName: "Custom Game" }),
+    );
+    const legendary = write(
+      "custom/legendary.json",
+      JSON.stringify({ Moved: { app_name: "Moved", title: "Moved Game" } }),
+    );
+    write(
+      "custom/EA/Game/__Installer/installerdata.xml",
+      `<?xml version="1.0" encoding="utf-8"?>
+<DiPManifest version="4.0">
+  <gameTitles><gameTitle locale="en_US">Elsewhere</gameTitle></gameTitles>
+  <contentIDs><contentID>555</contentID></contentIDs>
+</DiPManifest>`,
+    );
+    const itchData = path.join(root, "custom", "itch");
+    makeDb(
+      "custom/itch/db/butler.db",
+      `create table games (id integer, title text);
+       create table caves (game_id integer, verdict text);
+       insert into games values (8, 'Custom itch');
+       insert into caves values (8, '{"basePath":"/c"}');`,
+    );
+    const custom: installed.InstalledOptions = {
+      ...nowhere,
+      epicManifestsDirs: [path.join(root, "custom", "Manifests")],
+      legendaryInstalledFiles: [legendary],
+      // (the EA app's games, outside Windows only where a parser points)
+      eaGamesDirs: [path.join(root, "custom", "EA")],
+      itchAppDataDirs: [itchData, `${itchData}${path.sep}`],
+    };
+    expect(ids(await installed.readInstalledGames("epic", custom))).toEqual([
+      "Custom",
+      "Moved",
+    ]);
+    expect(ids(await installed.readInstalledGames("ea", custom))).toEqual([
+      "555",
+    ]);
+    expect(await installed.readInstalledGames("itch", custom)).toEqual([
+      { store: "itch", id: "8", title: "Custom itch" },
+    ]);
+  });
+
   it("finds nothing, and doesn't fail, where nothing is installed or a file is damaged", async () => {
     write("damaged/legendary.json", "{");
     write("damaged/heroic/gog_store/installed.json", "not json");
