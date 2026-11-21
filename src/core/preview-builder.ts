@@ -391,17 +391,22 @@ export class PreviewBuilder {
               }
             }
           }
+          // (a Store Account game's id at its store: both providers find
+          // the game by it first)
+          const platformIds = file.sgdbPlatformId ? [file.sgdbPlatformId] : [];
           for (const artworkType of artworkTypes) {
             if (pools[artworkType][file.imagePool] === undefined) {
               pools[artworkType][file.imagePool] = {
                 online: {
                   sgdb: {
                     searchQueries: file.onlineImageQueries,
+                    platformIds: [...platformIds],
                     imageProviderAPIs: config.imageProviderAPIs.sgdb,
                     content: [],
                   },
                   steamCDN: {
                     searchQueries: file.onlineImageQueries,
+                    platformIds: [...platformIds],
                     imageProviderAPIs: config.imageProviderAPIs.steamCDN || {},
                     content: [],
                   },
@@ -418,17 +423,17 @@ export class PreviewBuilder {
                   config.imageProviders,
                 );
               for (const provider of config.imageProviders) {
-                let currentQueries =
-                  pools[artworkType][file.imagePool].online[provider]
-                    .searchQueries;
-                pools[artworkType][file.imagePool].online[
-                  provider
-                ].imageProviderAPIs = config.imageProviderAPIs[provider];
-                pools[artworkType][file.imagePool].online[
-                  provider
-                ].searchQueries = _.union(
-                  currentQueries,
+                const online =
+                  pools[artworkType][file.imagePool].online[provider];
+                online.imageProviderAPIs = config.imageProviderAPIs[provider];
+                online.searchQueries = _.union(
+                  online.searchQueries,
                   file.onlineImageQueries,
+                );
+                online.platformIds = _.unionWith(
+                  online.platformIds ?? [],
+                  platformIds,
+                  _.isEqual,
                 );
               }
             }

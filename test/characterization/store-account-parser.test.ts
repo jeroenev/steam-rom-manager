@@ -60,7 +60,10 @@ import {
   makeFakeSteam,
   makeSettings,
   tempDir,
+  writeFiles,
 } from "../helpers/fixtures";
+import { userDataDir } from "../../src/paths"; // the test stub's temp dir
+import { sgdbCalls, sgdbIds, sgdbStoreIds } from "../stubs/sgdb-search";
 import { makeLogger } from "../helpers/services-harness";
 import {
   FakeHandler,
@@ -401,6 +404,111 @@ describe("Store Account parser (characterization)", () => {
       '"https://www.humblebundle.com/home/library/owlboy"',
       explorer,
     ]);
+  });
+
+  it("Epic, EA and Battle.net games carry the id SteamGridDB knows them by; an exception's search replaces it", async () => {
+    const owned: Partial<Record<StoreKey, OwnedGame[]>> = {
+      epic: [
+        ownedGame("epic", "Sugar", "Rocket League", {
+          namespace: "ns-rl",
+          catalog_item_id: "cat-rl",
+        }),
+        ownedGame("epic", "Calluna", "Control", {
+          namespace: "ns-control",
+          catalog_item_id: "cat-control",
+        }),
+      ],
+      ea: [ownedGame("ea", "OFB-EAST:52735", "Zuma's Revenge!")],
+      battlenet: [
+        ownedGame("battlenet", "Pro", "Overwatch 2", {
+          internal_id: "prometheus",
+        }),
+        ownedGame("battlenet", "W3C", "Warcraft III: Reign of Chaos"),
+      ],
+    };
+    for (const [store, games] of Object.entries(owned)) {
+      storage.saveSession(
+        store as StoreKey,
+        { accountName: "player", data: {} },
+        host,
+      );
+      library(store as StoreKey, games);
+    }
+    const parser = fileParser();
+    parser.setUserExceptions({
+      exceptions: [
+        {
+          id: "e1",
+          matchTitle: "Control",
+          timeStamp: 1,
+          newTitle: "",
+          searchTitle: "Control Ultimate Edition",
+          sgdbId: "",
+          commandLineArguments: "",
+          excludeArtwork: false,
+        },
+      ],
+      exclusions: [],
+    });
+    const result = await parser.executeFileParser(
+      [
+        config({}),
+        ...Object.keys(owned).map((store) =>
+          config(
+            { storeAccount: store },
+            { configTitle: `${store} owned`, parserId: `owned-${store}` },
+          ),
+        ),
+      ],
+      makeSettings(),
+    );
+    const files = result.parsedConfigs.flatMap((pc) => pc.files);
+    expect(
+      Object.fromEntries(
+        files.map((f) => [f.titles.final, f.sgdbPlatformId ?? null]),
+      ),
+    ).toEqual({
+      "Disco Elysium": null,
+      "The Witcher 3: Wild Hunt": null,
+      "Rocket League": { platform: "egs", id: "Sugar" },
+      Control: null,
+      "Zuma's Revenge!": { platform: "origin", id: "OFB-EAST:52735" },
+      "Overwatch 2": { platform: "bnet", id: "prometheus" },
+      "Warcraft III: Reign of Chaos": null,
+    });
+    const control = files.find((f) => f.titles.final === "Control");
+    expect(control.onlineImageQueries).toEqual(["Control Ultimate Edition"]);
+    const rocketLeague = files.find((f) => f.titles.final === "Rocket League");
+    expect(rocketLeague.onlineImageQueries).toEqual(["Rocket League"]);
+  });
+
+  it("drmProtect: a game's artwork backups are those of the game its store id names", async () => {
+    // (a title search would find another game)
+    sgdbStoreIds["egs/Sugar"] = 3113;
+    sgdbIds["Rocket League"] = [999];
+    const backups = path.join(userDataDir, "artworkBackups");
+    writeFiles(backups, ["tall/3113.png", "tall/999.png"]);
+    sgdbCalls.length = 0;
+    try {
+      storage.saveSession("epic", { accountName: "player", data: {} }, host);
+      library("epic", [ownedGame("epic", "Sugar", "Rocket League")]);
+      const result = await parse(
+        config({ storeAccount: "epic" }, { drmProtect: true }),
+      );
+      const [file] = result.parsedConfigs[0].files;
+      expect(file.backupImage.tall).toMatch(/3113\.png$/);
+      expect(sgdbCalls).toEqual([
+        {
+          method: "retrieveIdsFromTitle",
+          title: "Rocket League",
+          platformIds: [{ platform: "egs", id: "Sugar" }],
+        },
+      ]);
+    } finally {
+      delete sgdbStoreIds["egs/Sugar"];
+      delete sgdbIds["Rocket League"];
+      fs.rmSync(backups, { recursive: true, force: true });
+    }
   });
 
   it("uses the GOG Galaxy parser's program, so the shortcut keeps its id once installed", async () => {

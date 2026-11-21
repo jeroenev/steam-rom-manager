@@ -4,6 +4,7 @@ import { ImageProviderAPI } from "./user-configuration.model";
 import { OnlineProviderType, ArtworkType, SelectItem } from ".";
 import { LaunchWrapper, ParserLaunchWrapper } from "./launch-wrapper.model";
 import type { StoreKey } from "../lib/stores/types";
+import type { SgdbPlatformId } from "./image-providers.model";
 
 export interface StringMap {
   [key: string]: any;
@@ -44,6 +45,9 @@ export interface ParsedUserConfigurationFile {
   compatToolName: string;
   appendArgsToExecutable: boolean;
   onlineImageQueries: string[];
+  // The game's id at a store SteamGridDB knows (ParsedSuccess); dropped when
+  // an exception sets the game's artwork search.
+  sgdbPlatformId?: SgdbPlatformId;
   steamCategories: string[];
   imagePool: string;
   defaultImage: Record<ArtworkType, string>;
@@ -130,6 +134,9 @@ export interface ParsedSuccess {
   appendArgsToExecutable?: boolean; //Used by manual parsers
   // Scripts the parser runs around the launch (see lib/launch-wrapper).
   launchWrapper?: ParserLaunchWrapper;
+  // The game's id at a store SteamGridDB knows (Store Account parser): its
+  // artwork is looked up by it before the title search.
+  sgdbPlatformId?: SgdbPlatformId;
 }
 
 export interface ParsedData {

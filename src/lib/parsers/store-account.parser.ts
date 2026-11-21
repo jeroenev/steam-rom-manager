@@ -28,6 +28,7 @@ import {
   readInstalledGames,
   readSessionInfo,
   refreshIfStale,
+  sgdbPlatformIdOf,
   steamInstalledTitles,
   storeClient,
 } from "../stores";
@@ -395,12 +396,15 @@ export class StoreAccountParser implements GenericParser {
     return {
       success: games.map((game) => {
         const target = installTarget(game, installWith, launchers);
+        // (its artwork: by its id at the store, where SteamGridDB knows it)
+        const sgdbPlatformId = sgdbPlatformIdOf(game);
         return {
           extractedTitle: game.title,
           extractedAppId: game.id,
           filePath: target.exe,
           fileLaunchOptions: target.args,
           startInDirectory: target.startDir,
+          ...(sgdbPlatformId && { sgdbPlatformId }),
         };
       }),
       failed: [],

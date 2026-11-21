@@ -95,6 +95,7 @@ export function hostCore(
         imageType: string,
         apis: any,
         provider: any,
+        platformIds?: any,
       ) =>
         core.providers.retrieveUrls(
           title,
@@ -102,6 +103,7 @@ export function hostCore(
           apis,
           provider,
           (event, data) => emit("providers:event", { id, event, data }),
+          Array.isArray(platformIds) ? platformIds : [],
         ),
       stopUrlDownload: async () => core.providers.stopUrlDownload(),
       // SteamGridDB games matching a title ("fix match").

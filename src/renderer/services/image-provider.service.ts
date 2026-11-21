@@ -4,6 +4,7 @@ import {
   ImageProviderAPI,
   OnlineProviderType,
   ProviderCallback,
+  SgdbPlatformId,
 } from "../../models";
 import {
   onlineProviders,
@@ -53,6 +54,7 @@ class RemoteArtworkProviders {
     imageProviderAPIs: ImageProviderAPI[OnlineProviderType],
     provider: OnlineProviderType,
     eventCallback: ProviderCallback,
+    platformIds: readonly SgdbPlatformId[] = [],
   ) {
     const id = String(this.nextId++);
     this.callbacks.set(id, eventCallback);
@@ -64,6 +66,7 @@ class RemoteArtworkProviders {
       imageType,
       imageProviderAPIs,
       provider,
+      platformIds,
     );
   }
 

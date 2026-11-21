@@ -1,5 +1,6 @@
 import { Fetch, HttpError } from "./http";
 import { apiKey } from "../lib/image-providers/api-key";
+import type { SgdbPlatform } from "../models/image-providers.model";
 
 // The parts of the SteamGridDB v2 API SRM uses, over an injected fetch.
 // Mirrors the `steamgriddb` npm client's requests (which used axios).
@@ -72,6 +73,12 @@ export class SgdbClient {
 
   getGameById(id: number, params?: { platformdata?: string[] }) {
     return this.get(`/games/id/${id}${buildQuery(params)}`);
+  }
+
+  // The game with this id at a store (EA's offer ids have a colon, which
+  // SteamGridDB takes encoded). An id it doesn't know is a 404 HttpError.
+  getGameByPlatformId(platform: SgdbPlatform, id: string) {
+    return this.get(`/games/${platform}/${encodeURIComponent(id)}`);
   }
 
   getGrids(options: SgdbArtworkQuery): Promise<any[]> {

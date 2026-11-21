@@ -47,6 +47,14 @@ A game that isn't installed opens, in this order:
 2. **Heroic** (Linux), for Epic, GOG and Amazon games, when Heroic is signed in to that store. Both Heroic's Flatpak and a native Heroic work.
 3. **The game's store page** in your browser.
 
+## Artwork
+
+SteamGridDB knows Epic Games Store, EA app and Battle.net games by their id at the store, so for those games SRM asks SteamGridDB for the game by that id first: the right game even when its title is shared or written differently. When SteamGridDB doesn't know the game by its id, SRM searches for its title, as it does for GOG, Amazon Games, Humble Bundle and itch.io games. This is for both SteamGridDB and Steam Official artwork, and for finding artwork backups.
+
+SteamGridDB knows a Battle.net game by the launcher's id for it (such as `prometheus` for Overwatch). Battle.net's classic games (Warcraft III, Diablo II) and games SRM doesn't know have no such id: their title is searched.
+
+A search you set for a game on Add Games (**Fix match**, or a search title) is used instead of the store's id.
+
 ## Keeping the shortcut when you install the game
 
 A Steam shortcut's id is made from its program and its title. Where SRM has a parser for the store's launcher, a Store Account shortcut uses the program that parser uses when it **launches through the launcher** (for example PowerShell for Epic and EA, `GalaxyClient.exe` for GOG, `Amazon Games.exe`, `Battle.net.exe`). So once you install the game and that parser adds it, under the same title and with launching through the launcher turned on, it is the same shortcut: its artwork and exceptions stay, and this parser leaves the game out from then on.
