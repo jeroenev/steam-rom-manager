@@ -2,6 +2,7 @@
 // SteamGridDB over the network. Calls are recorded so tests can assert on
 // (and pin) how often lib code searches SteamGridDB.
 import type { SgdbPlatformId } from "../../src/models/image-providers.model";
+import { sgdbIdRegex } from "../../src/lib/image-providers/available-providers";
 
 export const sgdbCalls: {
   method: string;
@@ -26,6 +27,10 @@ export async function retrieveIdsFromTitle(
   });
   if (sgdbFailures.has(title)) {
     throw new Error("getaddrinfo ENOTFOUND www.steamgriddb.com");
+  }
+  // (as the real one: an explicit id first; see test/unit/sgdb-search.test.ts)
+  if (sgdbIdRegex.test(title)) {
+    return [parseInt(title.match(sgdbIdRegex)![1])];
   }
   for (const { platform, id } of platformIds) {
     const known = sgdbStoreIds[`${platform}/${id}`];
