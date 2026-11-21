@@ -726,8 +726,18 @@ class FakeHumble {
   actionId = ACTION_ID;
   // The id the library page's script names (a release that broke it).
   scriptActionId = ACTION_ID;
-  // The largest page the site gives.
+  // The largest page the site gives, and how it refuses a larger one: a
+  // failed action (success: false), an error the action threw (an error
+  // row), or that error with a 500.
   maxPageSize = 1000;
+  refuseLargeAs: "refused" | "error-row" | "http-500" = "refused";
+  // A library of this many games instead of `pages`, paged as asked.
+  generated = 0;
+  // How long each answer of the action takes.
+  latencyMs = 0;
+  // The pages asked for at once, at most.
+  busy = 0;
+  mostAtOnce = 0;
   // The status endpoint is gone.
   noStatus = false;
   // Pages 1 and 2 of the library.
@@ -737,7 +747,7 @@ class FakeHumble {
     Object.assign(this, new FakeHumble());
   }
 
-  handle = ({ url, init }: FakeRequest): FakeAnswer => {
+  handle = ({ url, init }: FakeRequest): FakeAnswer | Promise<FakeAnswer> => {
     const u = new URL(url);
     if (url === humble.SESSION_STATUS_URL) {
       if (this.noStatus) {
@@ -751,6 +761,11 @@ class FakeHumble {
       return { body: this.signedIn ? LIBRARY_PAGE : SIGNED_OUT_PAGE };
     }
     if (url === humble.LIBRARY_URL && init.method === "POST") {
+      if (this.latencyMs > 0) {
+        return this.slowly(() =>
+          this.libraryAction(init.headers ?? {}, init.body ?? ""),
+        );
+      }
       return this.libraryAction(init.headers ?? {}, init.body ?? "");
     }
     if (u.pathname === "/_next/static/chunks/0oisjwfq6apc1.js") {
@@ -765,7 +780,59 @@ class FakeHumble {
     return { status: 404 };
   };
 
-  private libraryAction(headers: Record<string, string>, body: string) {
+  private async slowly(answer: () => FakeAnswer): Promise<FakeAnswer> {
+    this.busy++;
+    this.mostAtOnce = Math.max(this.mostAtOnce, this.busy);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, this.latencyMs));
+      return answer();
+    } finally {
+      this.busy--;
+    }
+  }
+
+  // Page `page` of a library of `this.generated` games, `limit` a page.
+  private generatedPage(page: number, limit: number) {
+    const total = this.generated;
+    const results = [];
+    for (
+      let n = (page - 1) * limit + 1;
+      n <= Math.min(total, page * limit);
+      n++
+    ) {
+      results.push({
+        id: `li-${n}`,
+        title: `Game ${n}`,
+        itemType: "content-entitlement",
+        productEntitlementId: `pe-${n}`,
+        entitlements: {
+          keys: [] as unknown[],
+          downloads: [
+            {
+              id: `game_${n}`,
+              title: `Game ${n}`,
+              downloads: [{ platform: "windows" }],
+            },
+          ],
+        },
+      });
+    }
+    const answer = {
+      success: true,
+      results,
+      pagination: {
+        page,
+        totalPages: Math.ceil(total / limit),
+        totalDocs: total,
+      },
+    };
+    return `0:{"a":"$@1"}\n1:${JSON.stringify(answer)}\n`;
+  }
+
+  private libraryAction(
+    headers: Record<string, string>,
+    body: string,
+  ): FakeAnswer {
     if (headers["Next-Action"] !== this.actionId) {
       return {
         status: 404,
@@ -784,9 +851,20 @@ class FakeHumble {
       };
     }
     if (Number(field("limit")) > this.maxPageSize) {
+      const thrown = '0:{"a":"$@1"}\n1:E{"digest":"3141592653"}\n';
+      return {
+        status: this.refuseLargeAs === "http-500" ? 500 : 200,
+        headers: { "content-type": "text/x-component" },
+        body:
+          this.refuseLargeAs === "refused"
+            ? UNAUTHORIZED.replace('"UNAUTHORIZED"', '"INVALID_REQUEST"')
+            : thrown,
+      };
+    }
+    if (this.generated > 0) {
       return {
         headers: { "content-type": "text/x-component" },
-        body: UNAUTHORIZED.replace('"UNAUTHORIZED"', '"INVALID_REQUEST"'),
+        body: this.generatedPage(Number(field("page")), Number(field("limit"))),
       };
     }
     const page = this.pages[Number(field("page")) - 1];
@@ -956,14 +1034,19 @@ describe("Humble Bundle account", () => {
 
   it("an action the site doesn't take is no refused login", async () => {
     await signIn();
+    // The id the page's script names, freshly looked up, isn't taken: the
+    // page and the action are of different releases while the site is
+    // updated, so later may work.
     fake.scriptActionId = "0000aaaabbbbccccddddeeeeffff000011112222";
     const err = await refresh.refreshLibrary("humble").catch((e) => e);
     expect(isLoginRejected(err)).toBe(false);
-    expect(err.message).toContain("SRM needs an update");
-    // A page whose scripts don't have it at all.
-    fake.scriptActionId = ACTION_ID;
-    fake.actionId = "other";
+    expect(isTransient(err)).toBe(true);
+    expect(err.message).toContain("while the site is being updated");
+    // A page whose scripts don't have it at all: SRM needs an update.
+    fake.scriptActionId = "not-an-action-id";
     const gone = await refresh.refreshLibrary("humble").catch((e) => e);
+    expect(isLoginRejected(gone)).toBe(false);
+    expect(isTransient(gone)).toBe(false);
     expect(gone.message).toContain("SRM needs an update");
   });
 
@@ -995,6 +1078,95 @@ describe("Humble Bundle account", () => {
     const none: string[] = [];
     humble.logGroups({ log: (line) => none.push(line) }, items().slice(0, 5));
     expect(none).toEqual([]);
+  });
+
+  it("asks as the library page does also when the larger page made the action throw", async () => {
+    for (const refuseLargeAs of ["error-row", "http-500"] as const) {
+      fake.reset();
+      fake.maxPageSize = humble.SITE_PAGE_SIZE;
+      fake.refuseLargeAs = refuseLargeAs;
+      host.requests.length = 0;
+      await signIn();
+      const library = await refresh.refreshLibrary("humble");
+      expect(library.games).toHaveLength(3);
+      const limits = host.requests
+        .filter((r) => r.init.method === "POST")
+        .map((r) => r.init.body?.match(/name="1_limit"\r\n\r\n(\d+)/)?.[1]);
+      expect(limits[0]).toBe(String(humble.PAGE_SIZE));
+      expect(limits.slice(1)).toEqual([
+        String(humble.SITE_PAGE_SIZE),
+        String(humble.SITE_PAGE_SIZE),
+      ]);
+      await refresh.deleteAccount("humble");
+    }
+  });
+
+  it("a refused login on the first page asks to sign in again, without a smaller page", async () => {
+    await signIn();
+    await refresh.refreshLibrary("humble");
+    // (the action's id is known: the first page is the first request)
+    fake.noStatus = true;
+    fake.signedIn = false;
+    host.requests.length = 0;
+    const err = await refresh.refreshLibrary("humble").catch((e) => e);
+    expect(isLoginRejected(err)).toBe(true);
+    expect(host.requests.filter((r) => r.init.method === "POST")).toHaveLength(
+      1,
+    );
+  });
+
+  it("a refusal the site calls retryable is transient", async () => {
+    const err = (() => {
+      try {
+        humble.parseLibraryAnswer(
+          humble.LIBRARY_URL,
+          '0:{"a":"$@1"}\n1:{"success":false,"error":"RATE_LIMITED","retryable":true}\n',
+        );
+      } catch (e) {
+        return e as Error;
+      }
+    })();
+    expect(isTransient(err)).toBe(true);
+    expect(isLoginRejected(err)).toBe(false);
+    expect(err?.message).toContain("RATE_LIMITED");
+  });
+
+  it("a large library at the site's own page size fits the deadline: pages go a few at a time", async () => {
+    fake.maxPageSize = humble.SITE_PAGE_SIZE;
+    fake.generated = 400;
+    fake.latencyMs = 10;
+    await signIn();
+    // (its 80 pages one at a time would take 800 ms or more)
+    const library = await refresh.refreshLibrary("humble", {
+      deadlineMs: 720,
+    });
+    expect(library.games).toHaveLength(400);
+    expect(fake.mostAtOnce).toBe(humble.PAGES_AT_ONCE);
+  });
+
+  it("pages are asked for in order, a few at a time, and none after a failure", async () => {
+    const asked: number[] = [];
+    const pages = await humble.fetchPages(9, 3, async (page) => {
+      asked.push(page);
+      return page * 10;
+    });
+    expect([...pages.entries()].sort((a, b) => a[0] - b[0])).toEqual(
+      [2, 3, 4, 5, 6, 7, 8, 9].map((page) => [page, page * 10]),
+    );
+    expect(asked).toEqual([2, 3, 4, 5, 6, 7, 8, 9]);
+    // One page: nothing to ask for.
+    expect((await humble.fetchPages(1, 3, async () => 1)).size).toBe(0);
+    asked.length = 0;
+    await expect(
+      humble.fetchPages(20, 2, async (page) => {
+        asked.push(page);
+        if (page === 3) {
+          throw new Error("page 3 failed");
+        }
+        return page;
+      }),
+    ).rejects.toThrow("page 3 failed");
+    expect(Math.max(...asked)).toBeLessThanOrEqual(4);
   });
 
   it("a list shorter than the library says it is isn't saved", async () => {

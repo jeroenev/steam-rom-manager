@@ -36,7 +36,9 @@
 //
 // Library: the session status first (signed out asks to sign in again), then
 // every page of filterUserLibrary, asked for as the library page asks (newest
-// first, nothing hidden), in larger pages.
+// first, nothing hidden), in larger pages (the page's own size when Humble
+// fails the first larger one), a few at a time once the first page has said
+// how many there are.
 //
 // Listing rules, from BoilR (Playnite's defaults):
 // - a download entitlement counts as a game when it has a Windows or a Linux
@@ -60,12 +62,15 @@ import {
   HttpStatus,
   cleanTitle,
   domainMatches,
+  errorChain,
+  isLoginRejected,
   loginRejected,
   messageOf,
   paginate,
   readText,
   snippet,
   statusOf,
+  transient,
   withoutQuery,
   wrapErr,
 } from "./http";
@@ -111,13 +116,17 @@ const COOKIE_DOMAIN = ".humblebundle.com";
 
 // The server action that lists the library, as the page's scripts name it.
 export const LIBRARY_ACTION = "filterUserLibrary";
-// Items per page. The library page asks for 5; when Humble refuses this
-// many, SRM asks as the page does.
+// Items per page. The library page asks for 5; when Humble fails the first
+// page with this many, SRM asks as the page does.
 export const PAGE_SIZE = 50;
 export const SITE_PAGE_SIZE = 5;
 // More pages than this is a site that keeps reporting more: an error, not
 // the end of the library.
-const MAX_PAGES = 2000;
+export const MAX_PAGES = 2000;
+// How many pages are asked for at once, once the first has said how many
+// there are (at 5 a page, one at a time wouldn't fit a large library in
+// the refresh's deadline).
+export const PAGES_AT_ONCE = 4;
 // The boundary of the action's form. Only SRM's own fields go in, and none
 // of them can hold it.
 export const FORM_BOUNDARY = "----srm-humble-library-form";
@@ -190,14 +199,47 @@ export interface TitleCopy {
 }
 
 // The site refused to list the library, for a reason other than the
-// sign-in.
+// sign-in. `retryable`: the answer says trying again later may work.
 export class ActionRefused extends Error {
   name = "ActionRefused";
-  constructor(readonly code: string) {
+  constructor(
+    readonly code: string,
+    readonly retryable = false,
+  ) {
     super(
       `Humble Bundle refused to list the library${code ? ` (${code})` : ""}`,
     );
   }
+}
+
+// The library action's answer was a failure that a smaller page may not
+// get: a refusal, an error the server threw (as an error row, or a 5xx
+// with one), or another status than a refused login. (Not a refused
+// login, an unknown action, or a request that got no answer.) It carries
+// the failure as its cause, so its kind still shows.
+export class LibraryPageFailed extends Error {
+  name = "LibraryPageFailed";
+  constructor(cause: unknown) {
+    super(messageOf(cause), { cause });
+  }
+}
+
+function pageSizeMayMatter(err: unknown): boolean {
+  return (
+    !isLoginRejected(err) &&
+    errorChain(err).some(
+      (cause) =>
+        (cause instanceof ActionRefused && !cause.retryable) ||
+        cause instanceof FlightServerError ||
+        cause instanceof HttpStatus,
+    )
+  );
+}
+
+// The library action can't be found: no script of the library page names
+// it, or the site doesn't take the id one names.
+export class LibraryActionUnknown extends Error {
+  name = "LibraryActionUnknown";
 }
 
 export function beginLogin(): PendingLogin {
@@ -367,25 +409,64 @@ async function fetchLibrary(
   try {
     first = await action.page(1, pageSize);
   } catch (err) {
-    // Humble may refuse pages as large as SRM's: then as its own page asks.
-    if (!(err instanceof ActionRefused)) {
+    // Humble may refuse pages as large as SRM's, whichever way it says so:
+    // then as its own page asks. (Its error, if that fails too.)
+    if (!(err instanceof LibraryPageFailed)) {
       throw err;
     }
     pageSize = SITE_PAGE_SIZE;
     first = await action.page(1, pageSize);
   }
+  if (first.totalPages > MAX_PAGES) {
+    throw new Error(
+      `Humble Bundle says the library has ${first.totalPages} pages, more than SRM reads (${MAX_PAGES}), so the list is incomplete and was not saved`,
+    );
+  }
+  // The pages the first one says there are, a few at a time (the action's
+  // id is known now), each by its number.
+  const fetched = await fetchPages(first.totalPages, PAGES_AT_ONCE, (page) =>
+    action.page(page, pageSize),
+  );
+  fetched.set(1, first);
   let totalDocs = 0;
   const items = await paginate(
     "Humble Bundle's library",
     1,
     MAX_PAGES,
     async (page: number) => {
-      const answer = page === 1 ? first : await action.page(page, pageSize);
+      // (a page past those, as the library grows: one at a time)
+      const answer = fetched.get(page) ?? (await action.page(page, pageSize));
       totalDocs = answer.totalDocs;
       return [answer.items, nextPage(answer, page)];
     },
   );
   return completeItems(items, totalDocs);
+}
+
+// Pages 2 to `lastPage`, `atOnce` at a time, by page number. The first
+// failure ends it: no page is asked for after it.
+export async function fetchPages<T>(
+  lastPage: number,
+  atOnce: number,
+  fetchPage: (page: number) => Promise<T>,
+): Promise<Map<number, T>> {
+  const pages = new Map<number, T>();
+  let next = 2;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && next <= lastPage) {
+      const page = next++;
+      try {
+        pages.set(page, await fetchPage(page));
+      } catch (err) {
+        failed = true;
+        throw err;
+      }
+    }
+  };
+  const workers = Math.max(1, Math.min(atOnce, lastPage - 1));
+  await Promise.all(Array.from({ length: workers }, worker));
+  return pages;
 }
 
 // The library action, with its id: the one from the last time, or else the
@@ -417,8 +498,11 @@ class LibraryAction {
         return answer;
       }
       if (this.lookedUp) {
-        throw new Error(
-          `Humble Bundle does not take the ${LIBRARY_ACTION} action of its own library page. SRM needs an update.`,
+        // (the page and the action can come from different releases of the
+        // site while it's being updated)
+        throw transient(
+          `Humble Bundle did not take the ${LIBRARY_ACTION} action of its own library page; this happens while the site is being updated. SRM tries again later.`,
+          new LibraryActionUnknown(LIBRARY_ACTION),
         );
       }
       this.id = undefined;
@@ -446,7 +530,11 @@ async function requestLibraryPage(
     },
     body: libraryActionBody(page, pageSize),
   });
-  return readLibraryAnswer(response);
+  try {
+    return await readLibraryAnswer(response);
+  } catch (err) {
+    throw pageSizeMayMatter(err) ? new LibraryPageFailed(err) : err;
+  }
 }
 
 // The answer to the library action: a page, "unknown action" when the site
@@ -519,6 +607,7 @@ export function parseLibraryAnswer(
     if (err instanceof FlightServerError) {
       throw new Error(
         `Humble Bundle could not list the library: ${err.message}`,
+        { cause: err },
       );
     }
     throw unexpected(messageOf(err));
@@ -530,6 +619,10 @@ export function parseLibraryAnswer(
     const code = typeof result.error === "string" ? result.error : "";
     if (SIGNED_OUT_CODES.includes(code.toUpperCase())) {
       throw notSignedIn();
+    }
+    if (result.retryable === true) {
+      const refused = new ActionRefused(code, true);
+      throw transient(`${refused.message}; it may work later`, refused);
     }
     throw new ActionRefused(code);
   }
@@ -696,7 +789,7 @@ async function findLibraryAction(ctx: StoreContext): Promise<string> {
       return id;
     }
   }
-  throw new Error(
+  throw new LibraryActionUnknown(
     `Humble Bundle's library page no longer lists the games the way SRM knows: none of its ${scripts.length} scripts has the ${LIBRARY_ACTION} action. SRM needs an update.`,
   );
 }
