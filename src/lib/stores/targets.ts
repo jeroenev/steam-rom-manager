@@ -9,7 +9,8 @@
 // program (PowerShell for Epic and EA, GalaxyClient.exe, Amazon Games.exe,
 // Battle.net.exe): once the game is installed and that parser lists it
 // under the same title, the shortcut keeps its id, and with it its artwork
-// and exceptions.
+// and exceptions. (Not for an EA Desktop parser that waits for the game to
+// exit: its shortcuts run SRM's launch script, lib/launch-wrapper.)
 
 import * as fs from "fs";
 import * as os from "os";

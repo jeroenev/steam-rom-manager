@@ -25,7 +25,7 @@ With this enabled, the game's shortcut runs SRM's launch script (see **Script wr
 
 Steam's **Stop** button may not end the game: the EA app starts the game, so Steam may not count it among the shortcut's programs (it never does when the EA app was already open). Quit the game from its own menu instead. **Stop** does end SRM's launch script, so whatever still runs afterwards (the game, the EA app) isn't closed for you.
 
-Turning this on or off changes the shortcut's executable (SRM's launch script instead of PowerShell), so the games get new app IDs: the next save replaces their shortcuts.
+Turning this on or off changes the shortcut's executable (SRM's launch script instead of PowerShell), so the games get new app IDs: the next save replaces their shortcuts. A Store Account parser's shortcut for an EA game that isn't installed runs PowerShell, so with this on, the game gets a new shortcut once you install it (see the Store Account parser).
 
 ## Restart An Open EA App So The Steam Overlay Works `[Windows only]`
 

@@ -63,7 +63,7 @@ A search you set for a game on Add Games (**Fix match**, or a search title) is u
 
 ## Keeping the shortcut when you install the game
 
-A Steam shortcut's id is made from its program and its title. Where SRM has a parser for the store's launcher, a Store Account shortcut uses the program that parser uses when it **launches through the launcher** (for example PowerShell for Epic and EA, `GalaxyClient.exe` for GOG, `Amazon Games.exe`, `Battle.net.exe`). So once you install the game and that parser adds it, under the same title and with launching through the launcher turned on, it is the same shortcut: its artwork and exceptions stay, and this parser leaves the game out from then on.
+A Steam shortcut's id is made from its program and its title. Where SRM has a parser for the store's launcher, a Store Account shortcut uses the program that parser uses when it **launches through the launcher** (for example PowerShell for Epic and EA, `GalaxyClient.exe` for GOG, `Amazon Games.exe`, `Battle.net.exe`). So once you install the game and that parser adds it, under the same title and with launching through the launcher turned on, it is the same shortcut: its artwork and exceptions stay, and this parser leaves the game out from then on. For the EA app, that also takes the EA Desktop parser's **Wait for the game to exit** turned off: with it on, that parser's shortcuts run SRM's launch script instead of PowerShell, so the installed game gets a new shortcut and the old one is removed.
 
 When the titles differ (the store's launcher can name a game differently from the store's account page), the installed game gets a new shortcut and the old one is removed.
 
