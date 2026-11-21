@@ -70,17 +70,74 @@ function Invoke-Stage([string]$stage, $steps) {
     }
 }
 
-# The game's processes. With a game folder: anything running from it (or,
-# where the path can't be read, named like the game's executable). Without:
-# the started process and every process it started, followed through
-# processes that have exited (Windows keeps a child's parent id).
+# The path of a program ($Process, or the one with id $Id), also of one
+# running as administrator: Windows PowerShell reads Process.Path from the
+# program's modules, which it can't for those. None for a program Windows
+# won't tell about (a protected one, another user's). launcher-helpers.ps1
+# has the same (keep the two the same).
+$script:processPathError = $null
+function Get-ProcessPathById([int]$Id) {
+    If (!('SrmProcessPath' -as [type])) {
+        If ($script:processPathError) { Return $null }
+        Try {
+            Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class SrmProcessPath {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "QueryFullProcessImageNameW")]
+    private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder path, ref uint size);
+    [DllImport("kernel32.dll")]
+    private static extern bool CloseHandle(IntPtr handle);
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    public static string Get(int processId) {
+        IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+        if (process == IntPtr.Zero) return null;
+        try {
+            StringBuilder path = new StringBuilder(32768);
+            uint size = (uint)path.Capacity;
+            return QueryFullProcessImageName(process, 0, path, ref size) ? path.ToString(0, (int)size) : null;
+        } finally {
+            CloseHandle(process);
+        }
+    }
+}
+'@
+        } Catch {
+            # (e.g. where PowerShell may not compile code: only paths that
+            # Process.Path reads count then)
+            $script:processPathError = $_.Exception.Message
+            Write-Log "can't read the path of programs running as administrator: $($script:processPathError)"
+            Return $null
+        }
+    }
+    Return [SrmProcessPath]::Get($Id)
+}
+
+function Get-ProcessPath($Process) {
+    If ($Process.Path) { Return [string]$Process.Path }
+    Return Get-ProcessPathById $Process.Id
+}
+
+# The game's processes. With a game folder: this Windows session's programs
+# running from it (or, where the path can't be read at all, named like the
+# game's executable); another signed-in user's copy of the game isn't this
+# launch's. Without: the started process and every process it started,
+# followed through processes that have exited (Windows keeps a child's
+# parent id).
 $script:tracked = @{}
+$script:session = [Diagnostics.Process]::GetCurrentProcess().SessionId
 function Get-GameProcesses {
     If ($Config.game -and $Config.game.folder) {
         $folder = [IO.Path]::GetFullPath([string]$Config.game.folder).TrimEnd('\') + '\'
         $exeName = If ($Config.game.exeName) { [IO.Path]::GetFileNameWithoutExtension([string]$Config.game.exeName) } Else { $null }
-        Return @(Get-Process | Where-Object {
-            If ($_.Path) { $_.Path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $exeName -and $_.ProcessName -eq $exeName }
+        Return @(Get-Process | Where-Object { $_.SessionId -eq $script:session } | Where-Object {
+            $path = Get-ProcessPath $_
+            If ($path) { $path.StartsWith($folder, 'OrdinalIgnoreCase') } Else { $exeName -and $_.ProcessName -eq $exeName }
         } | ForEach-Object { $_.Id })
     }
     $all = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId -ErrorAction SilentlyContinue)
@@ -98,6 +155,16 @@ function Get-GameProcesses {
     Return @($script:tracked.Keys | Where-Object { $alive.ContainsKey($_) })
 }
 
+# Whether a program of this session runs that the parser names as the
+# launcher taking the game's start over (game.handOff, names without .exe:
+# Ubisoft Connect's UbisoftGameLauncher, which a game's first program can
+# start before it exits).
+function Test-HandOff {
+    $names = @($Config.game.handOff | Where-Object { $_ } | ForEach-Object { [string]$_ })
+    If (!$names.Count) { Return $False }
+    Return [bool]@(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $script:session }).Count
+}
+
 # Waits until no game process is left (and none comes back for a few
 # seconds: some games restart themselves).
 function Wait-GameExit {
@@ -113,6 +180,7 @@ Try {
     Invoke-Stage "pre-launch" $Config.preLaunch
 
     $started = $null
+    $startFailed = $False
     Try {
         $start = @{ FilePath = [string]$Config.file; PassThru = $True }
         If ($Config.arguments) { $start.ArgumentList = [string]$Config.arguments }
@@ -123,23 +191,61 @@ Try {
         If ($started) { $script:tracked[[int]$started.Id] = $True }
         Write-Log "started $($Config.file) $($Config.arguments)"
     } Catch {
+        # (e.g. a launcher link whose launcher is gone: nothing will start
+        # the game, so there's nothing to wait for)
+        $startFailed = $True
         Write-Log "could not start the game: $($_.Exception.Message)"
     }
 
     $running = $False
-    If ($Config.game -and $Config.game.folder) {
-        # The launcher starts the game: wait for it (3 minutes at most: a
-        # launcher may be updating first) and for its start-up to settle.
-        $timeout = (Get-Date).AddMinutes(3)
-        While (!@(Get-GameProcesses).Count -and (Get-Date) -lt $timeout) { Start-Sleep -Seconds 1 }
-        $running = [bool]@(Get-GameProcesses).Count
-        If ($running) {
+    If (!$startFailed -and $Config.game -and $Config.game.folder) {
+        # The launcher was started and starts the game: wait for it (3
+        # minutes at most, or what the parser sets: a launcher may update the
+        # game or ask to sign in first) and for its start-up to settle: the
+        # same programs 3 seconds apart (2 minutes at most, and not past that
+        # time). A game that is gone again by then may come back (some
+        # restart themselves); if it doesn't, it ran and exited (it crashed,
+        # or quit at once), and the launcher is closed as after any game.
+        # But while a program runs that the parser names as its launcher
+        # taking the game's start over (handOff), the game's first program
+        # only handed the game to the launcher, which may still update it or
+        # stall: the game hasn't started, so wait on for it.
+        $minutes = 3
+        If ($Config.game.startTimeoutMinutes -gt 0) { $minutes = [double]$Config.game.startTimeoutMinutes }
+        $timeout = (Get-Date).AddMinutes($minutes)
+        $goneLogged = $False
+        $handOffLogged = $False
+        While (!$running -and (Get-Date) -lt $timeout) {
+            If (!@(Get-GameProcesses).Count) {
+                Start-Sleep -Seconds 1
+                Continue
+            }
             $settleUntil = (Get-Date).AddMinutes(2)
+            If ($settleUntil -gt $timeout) { $settleUntil = $timeout }
+            $handedOff = $False
             Do {
                 $before = (@(Get-GameProcesses) | Sort-Object) -join ","
                 Start-Sleep -Seconds 3
                 $after = (@(Get-GameProcesses) | Sort-Object) -join ","
-            } Until (($after -and $before -eq $after) -or (Get-Date) -gt $settleUntil)
+                If (!$after -and (Test-HandOff)) {
+                    # (only when it still runs a moment later: it can outlive
+                    # a game that ended by half a second)
+                    Start-Sleep -Seconds 2
+                    $after = (@(Get-GameProcesses) | Sort-Object) -join ","
+                    $handedOff = !$after -and (Test-HandOff)
+                }
+                If (!$after -and !$handedOff -and !$goneLogged) {
+                    $goneLogged = $True
+                    Write-Log "the game closed again during start-up; waiting for it to come back (2 minutes at most)"
+                }
+            } Until (($after -and $before -eq $after) -or $handedOff -or (Get-Date) -gt $settleUntil)
+            $running = !$handedOff
+            If ($handedOff -and !$handOffLogged) {
+                $handOffLogged = $True
+                Write-Log "the game handed its start to its launcher (which may still update it); waiting for it to start"
+            } ElseIf (!$after) {
+                Write-Log "the game didn't come back: it ran and exited"
+            }
         }
     } Else {
         $running = [bool]$started

@@ -29,6 +29,18 @@ export class EADesktopParser implements GenericParser {
           inputType: "toggle",
           info: this.lang.docs__md.input.join(""),
         },
+        eaWaitForExit: {
+          label: this.lang.eaWaitForExitTitle,
+          inputType: "toggle",
+          hidden: os.type() != "Windows_NT",
+          info: this.lang.docs__md.input.join(""),
+        },
+        eaSteamOverlay: {
+          label: this.lang.eaSteamOverlayTitle,
+          inputType: "toggle",
+          hidden: os.type() != "Windows_NT",
+          info: this.lang.docs__md.input.join(""),
+        },
       },
     };
   }
@@ -49,9 +61,15 @@ export class EADesktopParser implements GenericParser {
           gamesDir: inputs.eaGamesDir,
           installLocations: await installLocations(),
         });
+        // "Wait for the game to exit" only works when launching via the EA
+        // app (and on Windows, which this parser needs anyway).
         const { success, failed } = await installedGames(
           folders,
           !!inputs.eaLauncherMode,
+          {
+            waitForExit: !!inputs.eaWaitForExit,
+            steamOverlay: !!inputs.eaSteamOverlay,
+          },
         );
         resolve({
           executableLocation: powershellPath(process.env.SystemRoot),
