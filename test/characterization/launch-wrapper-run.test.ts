@@ -166,4 +166,121 @@ describe("launch script", () => {
     },
     120000,
   );
+
+  // A game found by its folder (as the EA app's, Ubisoft Connect's and Epic's
+  // wrappers find theirs), started by a "launcher" (a .cmd file) as copies of
+  // ping.exe in that folder. Its post-launch and post-exit steps note how many
+  // of the game's programs ran then.
+  async function runFolderGame(
+    shortAppId: string,
+    title: string,
+    exeName: string,
+    startTimeoutMinutes: number,
+    launcher: (gameExe: string) => string,
+  ) {
+    const root = tempDir("launch-folder");
+    const order = path.join(root, "order.txt");
+    const gameFolder = path.join(root, "Game");
+    fs.mkdirSync(gameFolder);
+    const gameExe = path.join(gameFolder, `${exeName}.exe`);
+    fs.copyFileSync(
+      path.join(
+        process.env.SystemRoot || "C:\\Windows",
+        "System32",
+        "PING.EXE",
+      ),
+      gameExe,
+    );
+    const step = path.join(root, "step.ps1");
+    fs.writeFileSync(
+      step,
+      `Add-Content '${order}' "$env:SRM_STAGE $(@(Get-Process ${exeName} -ErrorAction SilentlyContinue).Count)"\r\n`,
+    );
+    const launch = path.join(root, "launch.cmd");
+    fs.writeFileSync(launch, launcher(gameExe));
+    await installLaunchScripts();
+    await writeWrapperFile("11111111", shortAppId, {
+      title,
+      wrapper: makeLaunchWrapper('"C:\\unused.exe"', undefined, {
+        launch: { file: launch },
+        game: { folder: gameFolder, startTimeoutMinutes },
+        postLaunch: [{ script: step }],
+        postExit: [{ script: step }],
+      }),
+      launchOptions: "",
+      startInDirectory: "",
+    });
+    const began = Date.now();
+    const run = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        wrapperFile("11111111", shortAppId),
+      ],
+      { encoding: "utf8", timeout: 100000 },
+    );
+    expect(run.status, run.stderr).toBe(0);
+    return {
+      seconds: (Date.now() - began) / 1000,
+      steps: fs.readFileSync(order, "utf8").trim().split(/\r?\n/),
+      log: fs
+        .readFileSync(launchLog(), "utf8")
+        .split(/\r?\n/)
+        .filter((line) => line.includes(`[${title}]`))
+        .join("\n"),
+    };
+  }
+
+  // (seen on Far Cry 3: its first program hands the game to Ubisoft Connect
+  // and exits within a second; Ubisoft Connect then stalled on a download
+  // and never started the game. Counted as started, the launcher would have
+  // been closed under the user.)
+  it.runIf(windows)(
+    "a game whose program is gone again before its start-up settles hasn't started",
+    async () => {
+      const { seconds, steps, log } = await runFolderGame(
+        "125",
+        "Flash Game",
+        "srmtestflashgame",
+        // (9 seconds)
+        0.15,
+        // (runs about 2 seconds: always seen, gone before the 3 second check)
+        (gameExe) =>
+          `@echo off\r\nstart "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n`,
+      );
+      expect(log).toContain("the game closed again during start-up");
+      expect(log).toContain(
+        "the game didn't start; skipping post-launch scripts",
+      );
+      expect(log).not.toContain("game started");
+      expect(steps).toEqual(["post-exit 0"]);
+      expect(seconds).toBeLessThan(60);
+    },
+    120000,
+  );
+
+  it.runIf(windows)(
+    "a game that restarts itself after a pause is waited for",
+    async () => {
+      const { steps, log } = await runFolderGame(
+        "126",
+        "Restarting Game",
+        "srmtestrestartgame",
+        0.5,
+        // (about 2 seconds, a 5 second pause, then about 10 seconds)
+        (gameExe) =>
+          `@echo off\r\nstart "" /b "${gameExe}" -n 3 127.0.0.1 >nul\r\n` +
+          `ping -n 6 127.0.0.1 >nul\r\n` +
+          `start "" /b "${gameExe}" -n 11 127.0.0.1 >nul\r\n`,
+      );
+      expect(log).toContain("game started");
+      expect(log).toContain("game exited");
+      expect(log).not.toContain("the game didn't start");
+      expect(steps).toEqual(["post-launch 1", "post-exit 0"]);
+    },
+    120000,
+  );
 });

@@ -823,7 +823,8 @@ describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
 
   it("through SRM's launch script: a launcher the launch started is closed after the game", async () => {
     // The launch starts the "launcher", which starts the "game" (copies of
-    // ping.exe; the game runs about 4 seconds).
+    // ping.exe; the game runs about 9 seconds: long enough for its start-up
+    // to settle).
     const ping = path.join(
       process.env.SystemRoot || "C:\\Windows",
       "System32",
@@ -838,7 +839,7 @@ describe.runIf(windows)("launcher scripts (EA app, Ubisoft Connect)", () => {
     fs.writeFileSync(
       launch,
       `@echo off\r\nstart "" /b "${launcherExe}" -n 120 127.0.0.1 >nul\r\n` +
-        `start "" /b "${gameExe}" -n 5 127.0.0.1 >nul\r\n`,
+        `start "" /b "${gameExe}" -n 10 127.0.0.1 >nul\r\n`,
     );
 
     // The EA app's wrapper, its launch replaced and its scripts pointed

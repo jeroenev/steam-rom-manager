@@ -134,19 +134,32 @@ Try {
     If (!$startFailed -and $Config.game -and $Config.game.folder) {
         # The launcher was started and starts the game: wait for it (3
         # minutes at most, or what the parser sets: a launcher may update the
-        # game or ask to sign in first) and for its start-up to settle.
+        # game or ask to sign in first) and for its start-up to settle: the
+        # same programs 3 seconds apart (2 minutes at most). One that is gone
+        # again by then hasn't started: a game's first program may only hand
+        # it to the launcher, which then may still update or stall, so wait
+        # on. (A game that crashes at once is therefore waited for until the
+        # time is up.)
         $minutes = 3
         If ($Config.game.startTimeoutMinutes -gt 0) { $minutes = [double]$Config.game.startTimeoutMinutes }
         $timeout = (Get-Date).AddMinutes($minutes)
-        While (!@(Get-GameProcesses).Count -and (Get-Date) -lt $timeout) { Start-Sleep -Seconds 1 }
-        $running = [bool]@(Get-GameProcesses).Count
-        If ($running) {
+        $goneAgain = $False
+        While (!$running -and (Get-Date) -lt $timeout) {
+            If (!@(Get-GameProcesses).Count) {
+                Start-Sleep -Seconds 1
+                Continue
+            }
             $settleUntil = (Get-Date).AddMinutes(2)
             Do {
                 $before = (@(Get-GameProcesses) | Sort-Object) -join ","
                 Start-Sleep -Seconds 3
                 $after = (@(Get-GameProcesses) | Sort-Object) -join ","
-            } Until (($after -and $before -eq $after) -or (Get-Date) -gt $settleUntil)
+            } Until (!$after -or $before -eq $after -or (Get-Date) -gt $settleUntil)
+            $running = [bool]$after
+            If (!$running -and !$goneAgain) {
+                $goneAgain = $True
+                Write-Log "the game closed again during start-up (its launcher may still update it); waiting for it to start"
+            }
         }
     } Else {
         $running = [bool]$started
