@@ -438,14 +438,14 @@
         "epic": "Sign in to Epic Games in your browser. Epic then shows a page of text containing \"authorizationCode\". Copy the code after it (or all of the text) and paste it here. The code works for a few minutes only.",
         "gog": "Sign in to GOG in your browser. When the page turns blank and its address starts with embed.gog.com/on_login_success, copy the whole address from the address bar and paste it here.",
         "amazon": "Sign in to Amazon in your browser. When it lands on the Amazon home page, copy the full address from the address bar and paste it here.",
-        "humble": "Sign in to humblebundle.com in your browser. Then open the developer tools (F12), go to Storage (Firefox) or Application (Chrome) > Cookies > https://www.humblebundle.com, and copy the value of the cookie named _simpleauth_sess. Paste it here. It is your login, so do not share it.",
+        "humble": "Sign in to humblebundle.com in your browser and open your library. Then open the developer tools (F12), go to Network, reload the page, select the request for library, and copy the value of its Cookie request header. Paste it here. It is your login, so do not share it.",
         "itch": "Sign in to itch.io in your browser and open your API keys page (Settings > API keys). Click \"Generate new API key\", then \"View\" next to the new key, and paste the key here. You can revoke it on the same page at any time."
       },
       "placeholder": {
         "epic": "authorizationCode",
         "gog": "https://embed.gog.com/on_login_success?origin=client&code=...",
         "amazon": "https://www.amazon.com/?openid.assoc_handle=...&openid.oa2.authorization_code=...",
-        "humble": "_simpleauth_sess cookie value",
+        "humble": "Cookie header of www.humblebundle.com",
         "itch": "itch.io API key"
       }
     }

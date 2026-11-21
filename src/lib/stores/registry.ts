@@ -6,6 +6,7 @@ import { battlenetClient } from "./battlenet";
 import { eaClient } from "./ea";
 import { epicClient } from "./epic";
 import { gogClient } from "./gog";
+import { humbleClient } from "./humble";
 import { itchClient } from "./itch";
 import { StoreClient, StoreKey } from "./types";
 
@@ -29,4 +30,5 @@ registerStoreClient(gogClient);
 registerStoreClient(amazonClient);
 registerStoreClient(eaClient);
 registerStoreClient(battlenetClient);
+registerStoreClient(humbleClient);
 registerStoreClient(itchClient);
