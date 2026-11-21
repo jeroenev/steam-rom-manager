@@ -46,7 +46,8 @@ import {
   StoreSession,
 } from "./types";
 
-// Libraries older than this are fetched again (refreshIfStale's default).
+// Libraries older than this are fetched again (refreshIfStale's default,
+// unless the app sets another: setLibraryMaxAge).
 export const LIBRARY_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 
 // After a failed refresh, refreshIfStale waits this long before it tries
@@ -291,6 +292,21 @@ export function setStoresOffline(offline: boolean | (() => boolean)) {
   isOffline = typeof offline === "function" ? offline : () => offline;
 }
 
+// How old a library gets before refreshIfStale fetches it again (SRM's
+// setting, ownedGames.libraryMaxAgeHours): the app gives a function that
+// reads its live setting. Anything but a positive number is
+// LIBRARY_MAX_AGE_MS.
+let libraryMaxAge: () => number = () => LIBRARY_MAX_AGE_MS;
+
+export function setLibraryMaxAge(maxAgeMs: number | (() => number)) {
+  libraryMaxAge = typeof maxAgeMs === "function" ? maxAgeMs : () => maxAgeMs;
+}
+
+export function libraryMaxAgeMs(): number {
+  const maxAge = libraryMaxAge();
+  return Number.isFinite(maxAge) && maxAge > 0 ? maxAge : LIBRARY_MAX_AGE_MS;
+}
+
 // One refresh per store at a time in this process; lockRefresh (storage.ts)
 // is the same across processes. Two refreshes of one account at once would
 // both use (and rotate) the same refresh token.
@@ -511,14 +527,15 @@ export function refreshLibrary(
   });
 }
 
-// The library, fetched again first when it's older than `maxAgeMs`. A failed
-// fetch falls back to the cache and isn't tried again for
-// RETRY_AFTER_FAILURE_MS. Callers in this process or another wait for one
-// fetch instead of each making their own. Where the host can't talk to the
-// store, or SRM is offline, this is the cache.
+// The library, fetched again first when it's older than `maxAgeMs` (by
+// default the app's setting: libraryMaxAgeMs). A failed fetch falls back to
+// the cache and isn't tried again for RETRY_AFTER_FAILURE_MS. Callers in
+// this process or another wait for one fetch instead of each making their
+// own. Where the host can't talk to the store, or SRM is offline, this is
+// the cache.
 export async function refreshIfStale(
   store: StoreKey,
-  maxAgeMs: number = LIBRARY_MAX_AGE_MS,
+  maxAgeMs: number = libraryMaxAgeMs(),
   options: RefreshOptions = {},
 ): Promise<OwnedLibrary> {
   const noneYet = () =>

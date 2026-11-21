@@ -60,6 +60,22 @@ Resets the stored list of titles used for fuzzy matching to the list of titles r
 
 Clears the cache of titles that fuzzy matching has already seen (try this if changes you make to fuzzy list are not resulting in changes to titles in SRM).
 
+## Owned Games
+
+For the Store Account parsers, which add the games your store accounts own but haven't installed.
+
+### A game several store accounts own `[Recommend One shortcut, from the first store]`
+
+When the Store Account parsers of several stores list the same game (the same title), SRM adds one shortcut, from the store that comes first in the store order. Or it adds a shortcut from every store.
+
+### Store order
+
+The stores, most preferred first: when several own a game, the first one's shortcut is added. By default GOG, Epic Games Store, Amazon Games, EA app, Battle.net, Humble Bundle, itch.io.
+
+### Fetch a store account's games again when they are older than `[Default 6 hours]`
+
+SRM fetches a store account's list of games again by itself (when the app starts, and before a Store Account parser runs) once it is older than this.
+
 ## Image provider settings
 
 ### Artwork loading strategy `[Recommend Load artwork lazily]`

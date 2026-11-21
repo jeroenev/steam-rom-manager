@@ -283,7 +283,7 @@ export class PreviewBuilder {
     let ownedDuplicates = 0;
     const otherStores = ownedInOtherStores(
       data,
-      DEFAULT_MULTI_STORE_SETTINGS,
+      this.appSettings.ownedGames ?? DEFAULT_MULTI_STORE_SETTINGS,
       takenByOthers,
     );
     let ownedInOtherStore = 0;

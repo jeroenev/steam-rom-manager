@@ -24,9 +24,19 @@ Use one Store Account parser per store account. By default its games go into the
 
 ## A game several stores own
 
-When the Store Account parsers of two stores list the same game (the same title, compared by its letters and digits only, so "PREY" and "Prey" match) for the same Steam user, SRM adds **one** shortcut: the one of the store that comes first in the store order. The others are left out, and the log says how many. The store order is GOG, Epic Games Store, Amazon Games, EA app, Battle.net, Humble Bundle, itch.io: DRM-free first, then the stores with the most complete launchers.
+When the Store Account parsers of two stores list the same game (the same title, compared by its letters and digits only, so "PREY" and "Prey" match) for the same Steam user, SRM adds **one** shortcut: the one of the store that comes first in the store order. The others are left out, and the log says how many. The default order is GOG, Epic Games Store, Amazon Games, EA app, Battle.net, Humble Bundle, itch.io: DRM-free first, then the stores with the most complete launchers.
+
+Change the order, or have a shortcut from every store, in **Settings**, **Owned Games**. Those shortcuts have the same title; to tell them apart, give each parser a title modifier (for example `${title} (GOG)`). A title is part of a shortcut's id in Steam, so changing it makes a new shortcut.
 
 This is only between Store Account parsers: a game installed through any launcher is left out by the parser itself (see its settings), and the shortcut of another parser is never left out.
+
+## Settings
+
+In **Settings**, **Owned Games**, for every Store Account parser:
+
+- **A game several store accounts own**: one shortcut, from the first store in the store order (default), or a shortcut from every store.
+- **Store order**: the stores, most preferred first.
+- **Fetch a store account's games again when they are older than** (default 6 hours): see the parser's Account input.
 
 ## What a shortcut opens
 

@@ -1,7 +1,7 @@
 // A game the Store Account parsers of several stores list (the same title)
 // gets one shortcut per Steam user: the one of the store that comes first in
-// the store order. Only among Store Account parsers, and per Steam directory
-// and user account.
+// the store order (settings: ownedGames), or one from every store. Only
+// among Store Account parsers, and per Steam directory and user account.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -9,10 +9,14 @@ import {
   ownedInOtherStores,
   otherParsersAppIds,
 } from "../../src/core/preview-builder";
-import { ParsedUserConfigurationFile, ParserType } from "../../src/models";
+import {
+  AppSettings,
+  ParsedUserConfigurationFile,
+  ParserType,
+} from "../../src/models";
 import { POWERSHELL_EXE, galaxyPaths } from "../../src/lib/helpers/launchers";
 import { StoreKey } from "../../src/lib/stores/types";
-import { makeFakeSteam, tempDir } from "../helpers/fixtures";
+import { makeFakeSteam, makeSettings, tempDir } from "../helpers/fixtures";
 import {
   ALICE,
   BOB,
@@ -64,8 +68,19 @@ describe("a game the Store Account parsers of several stores list", () => {
     files: ParsedUserConfigurationFile[],
   ) => parsedConfig(steamDir, parserType, parserId, files);
 
-  async function preview(configs: Parameters<typeof buildPreview>[0]) {
-    const { result, logged } = await buildPreview(configs);
+  const settings = (ownedGames: Partial<AppSettings["ownedGames"]> = {}) => {
+    const s = makeSettings({
+      previewSettings: { retrieveCurrentSteamImages: false },
+    });
+    Object.assign(s.ownedGames, ownedGames);
+    return s;
+  };
+
+  async function preview(
+    configs: Parameters<typeof buildPreview>[0],
+    appSettings = settings(),
+  ) {
+    const { result, logged } = await buildPreview(configs, appSettings);
     // "title (parser)" per Steam user, sorted.
     const apps = (account: string) =>
       Object.values(result.previewData![steamDir][account].apps)
@@ -91,6 +106,35 @@ describe("a game the Store Account parsers of several stores list", () => {
     expect(logged.join("\n")).toContain(
       "Left out 2 Store Account shortcut(s) for games another of your store accounts also owns",
     );
+  });
+
+  it("follows the store order in the settings", async () => {
+    const { apps } = await preview(
+      [gog(), epic(), amazon()],
+      settings({ storeOrder: ["amazon", "epic"] }),
+    );
+    expect(apps(ALICE.accountID)).toEqual([
+      "Control (owned-epic)",
+      "FROSTPUNK (owned-epic)",
+      "Portal (owned-gog)",
+      "Prey™ (owned-amazon)",
+    ]);
+  });
+
+  it('keeps a shortcut from every store with "all"', async () => {
+    const { apps, logged } = await preview(
+      [gog(), epic(), amazon()],
+      settings({ multiStore: "all" }),
+    );
+    expect(apps(ALICE.accountID)).toEqual([
+      "Control (owned-epic)",
+      "FROSTPUNK (owned-epic)",
+      "Frostpunk (owned-gog)",
+      "Portal (owned-gog)",
+      "Prey (owned-gog)",
+      "Prey™ (owned-amazon)",
+    ]);
+    expect(logged.join("\n")).not.toContain("another of your store accounts");
   });
 
   it("decides per Steam user: another user's shortcuts are their own", async () => {

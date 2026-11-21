@@ -1,4 +1,5 @@
 import { languageManager } from "../../variables";
+import { DEFAULT_OWNED_GAMES } from "../../models/settings.model";
 import {
   onlineProviders,
   imageLoadStrategies,
@@ -105,6 +106,35 @@ export const appSettings = {
         properties: {
           name: { type: "string", default: "" },
           collapsed: { type: "boolean", default: false },
+        },
+      },
+    },
+    // Games the store accounts own but haven't installed (see
+    // OwnedGamesSettings).
+    ownedGames: {
+      type: "object",
+      default: {},
+      properties: {
+        // (any string: a store this SRM doesn't know is ranked last)
+        storeOrder: {
+          type: "array",
+          default: [...DEFAULT_OWNED_GAMES.storeOrder],
+          items: { type: "string" },
+        },
+        multiStore: {
+          type: "string",
+          enum: ["preferred", "all"],
+          default: DEFAULT_OWNED_GAMES.multiStore,
+        },
+        confirmAbove: {
+          type: "number",
+          minimum: 0,
+          default: DEFAULT_OWNED_GAMES.confirmAbove,
+        },
+        libraryMaxAgeHours: {
+          type: "number",
+          minimum: 1,
+          default: DEFAULT_OWNED_GAMES.libraryMaxAgeHours,
         },
       },
     },

@@ -820,6 +820,37 @@ describe("store accounts", () => {
     }
   });
 
+  it("a library is old after the app's setting (ownedGames.libraryMaxAgeHours)", async () => {
+    let asked = 0;
+    registerStoreClient(
+      fakeClient("epic", async () => {
+        asked++;
+        return games(3);
+      }),
+    );
+    storage.saveSession("epic", session("t"), host);
+    const hour = 60 * 60 * 1000;
+    storage.saveLibrary("epic", library(2, Date.now() - 3 * hour));
+    let maxAgeHours = 4;
+    refresh.setLibraryMaxAge(() => maxAgeHours * hour);
+    try {
+      expect(refresh.libraryMaxAgeMs()).toBe(4 * hour);
+      expect((await refresh.refreshIfStale("epic")).games).toHaveLength(2);
+      expect(asked).toBe(0);
+      // (the live setting)
+      maxAgeHours = 2;
+      expect((await refresh.refreshIfStale("epic")).games).toHaveLength(3);
+      expect(asked).toBe(1);
+      // Not a positive number: the default.
+      for (const bad of [0, -1, NaN]) {
+        maxAgeHours = bad;
+        expect(refresh.libraryMaxAgeMs()).toBe(refresh.LIBRARY_MAX_AGE_MS);
+      }
+    } finally {
+      refresh.setLibraryMaxAge(refresh.LIBRARY_MAX_AGE_MS);
+    }
+  });
+
   it("callers wait for one refresh instead of each making their own", async () => {
     let asked = 0;
     registerStoreClient(

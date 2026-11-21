@@ -29,10 +29,12 @@ export {
   forgetUnfinishedLogin,
   isAccountChanged,
   isStale,
+  libraryMaxAgeMs,
   onStoresChanged,
   pendingLogin,
   refreshIfStale,
   refreshLibrary,
+  setLibraryMaxAge,
   setStoresOffline,
   signOut,
 } from "./refresh";

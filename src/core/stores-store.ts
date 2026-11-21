@@ -15,6 +15,7 @@ import {
   readSessionInfo,
   refreshIfStale,
   refreshLibrary,
+  setLibraryMaxAge,
   setStoresOffline,
   signOut,
   storeClient,
@@ -24,6 +25,8 @@ import { Logger } from "../models";
 import { APP } from "../variables";
 import { ParsersStore } from "./parsers-store";
 import { SettingsStore } from "./settings-store";
+
+const HOUR_MS = 60 * 60 * 1000;
 
 // A store account as the parser editor shows it.
 export interface StoreAccountView extends AccountStatus {
@@ -56,8 +59,13 @@ export class StoresStore {
     private parsers: ParsersStore,
   ) {
     // (read when a library would be fetched by itself, so it's always the
-    // setting as it is now)
+    // setting as it is now: for the parsers' fetches and those at start)
     setStoresOffline(() => !!this.settings.get().offlineMode);
+    // (not a number: the default)
+    setLibraryMaxAge(
+      () =>
+        Number(this.settings.get().ownedGames?.libraryMaxAgeHours) * HOUR_MS,
+    );
   }
 
   private get lang() {
