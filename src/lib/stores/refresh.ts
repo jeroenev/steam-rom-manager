@@ -8,11 +8,19 @@
 // a list from before, on the command line in full. A failed refresh keeps
 // the last list, so a network problem never takes an account's games out of
 // Steam.
+//
+// A cookie store's login is the cookies of its browser partition, which is
+// in memory only. They are saved with the session (encrypted by the host,
+// like every sign-in) after a sign-in and after every refresh, and put back
+// into the partition before a refresh's first request when it doesn't hold
+// them: after a restart, in the command line, or when another SRM saved
+// newer ones.
 
 import * as _ from "lodash";
 import { getStoreHost, hostRefreshes, StoreHost } from "./host";
 import {
   isLoginRejected,
+  isSiteCookie,
   isTransient,
   loginRejected,
   messageOf,
@@ -31,6 +39,7 @@ import {
   OwnedLibrary,
   PendingLogin,
   STORE_NAMES,
+  SavedCookie,
   StoreClient,
   StoreContext,
   StoreKey,
@@ -164,6 +173,102 @@ function storeContext(
   return ctx;
 }
 
+// ---- a cookie store's partition and its saved cookies ----
+
+// Which saved cookies (their cookiesRev; null: none saved) each cookie
+// store's partition in this process holds, or holds a newer state of
+// (renewals this process couldn't save yet). Not known (after a restart, in
+// the command line, after a sign-in that didn't finish) or another SRM's
+// (it signed in or refreshed meanwhile): the saved cookies are put back
+// before the next refresh's first request.
+const partitionHolds = new Map<StoreKey, string | null>();
+
+// The sites whose cookies are a cookie store's login.
+function cookieSites(store: StoreKey): string[] {
+  return storeClient(store)?.beginLogin().siteDomains ?? [];
+}
+
+// The cookies of a cookie store's partition to save with its session: the
+// store's own sites' only, never another site's (a Google, Steam or Apple
+// single sign-on its sign-in page offered). Undefined for a token store, or
+// a host without partitions.
+async function partitionCookies(
+  store: StoreKey,
+  host: StoreHost,
+): Promise<SavedCookie[] | undefined> {
+  if (!COOKIE_STORES.includes(store) || !host.exportCookies) {
+    return undefined;
+  }
+  const sites = cookieSites(store);
+  const cookies = await host.exportCookies(store, sites);
+  return cookies.filter((cookie) => isSiteCookie(cookie.domain, sites));
+}
+
+// This process just saved the session, or put the saved cookies into the
+// partition: the partition holds what's saved, or newer. (Under the account
+// lock.)
+function partitionSaved(store: StoreKey) {
+  if (!COOKIE_STORES.includes(store)) {
+    return;
+  }
+  try {
+    partitionHolds.set(
+      store,
+      storage.readSessionInfo(store)?.cookiesRev ?? null,
+    );
+  } catch {
+    partitionHolds.delete(store);
+  }
+}
+
+// Replaces the partition's cookies with the saved ones (the host leaves out
+// expired ones). (Under the account lock.)
+async function putBackCookies(
+  store: StoreKey,
+  host: StoreHost,
+  saved: { cookiesRev: string | null; cookies: SavedCookie[] },
+) {
+  if (!host.importCookies) {
+    return;
+  }
+  partitionHolds.delete(store);
+  await host.importCookies(store, saved.cookies);
+  partitionHolds.set(store, saved.cookiesRev);
+}
+
+// Puts a cookie store's saved cookies into its partition before a refresh
+// sends anything, unless the partition holds them already. Under the account
+// lock, and only while the session is the one the refresh loaded (`rev`): a
+// sign-out or a new sign-in meanwhile wins, and what it removed doesn't come
+// back.
+async function restorePartition(store: StoreKey, host: StoreHost, rev: string) {
+  if (!COOKIE_STORES.includes(store) || !host.importCookies) {
+    return;
+  }
+  await storage.withAccountLock(store, async () => {
+    const saved = storage.loadSessionCookies(store, host);
+    if (!saved || saved.rev !== rev) {
+      throw accountChanged(store);
+    }
+    if (
+      partitionHolds.has(store) &&
+      partitionHolds.get(store) === saved.cookiesRev
+    ) {
+      return;
+    }
+    await putBackCookies(store, host, saved);
+  });
+}
+
+// Whether saved cookies are the same as `cookies`, whatever their order.
+function sameCookies(
+  cookies: readonly SavedCookie[],
+  saved: readonly SavedCookie[] | undefined,
+) {
+  const key = (c: SavedCookie) => `${c.domain}\n${c.path}\n${c.name}`;
+  return !!saved && _.isEqual(_.sortBy(cookies, key), _.sortBy(saved, key));
+}
+
 function needsRefreshingHost(host: StoreHost, store: StoreKey) {
   if (!host.canRefresh) {
     throw new Error(
@@ -255,17 +360,24 @@ export async function completeLogin(
 // A cookie store's sign-in that didn't finish (it failed, or the user closed
 // the window): its partition may hold a working login, which SRM would show
 // as "not signed in", with no way to sign out. It's emptied, unless the
-// account is signed in (an earlier sign-in, or a damaged one: that one's
-// cookies are the account's).
+// account is signed in (signing in again): then it gets the account's saved
+// cookies back, as they were before the window. (A damaged sign-in's
+// cookies can't be read: the partition is left as it is.)
 export async function forgetUnfinishedLogin(store: StoreKey) {
   const host = getStoreHost();
-  if (!COOKIE_STORES.includes(store) || !host.clearStoreData) {
+  if (!COOKIE_STORES.includes(store)) {
     return;
   }
   try {
     await storage.withAccountLock(store, async () => {
+      partitionHolds.delete(store);
       if (!signedIn(store)) {
-        await host.clearStoreData!(store);
+        await host.clearStoreData?.(store);
+        return;
+      }
+      const saved = storage.loadSessionCookies(store, host);
+      if (saved) {
+        await putBackCookies(store, host, saved);
       }
     });
   } catch (err) {
@@ -276,17 +388,26 @@ export async function forgetUnfinishedLogin(store: StoreKey) {
   }
 }
 
-// Saves a new login. The cached library is kept, to be fetched again on next
-// use, only when it's known to be the same account's: another account's
-// games must not show under this one, and an account without games could
-// never replace them (an empty list never replaces one with games).
+// Saves a new login: a cookie store's with its partition's cookies, which
+// are the login (an earlier login's saved cookies go). The cached library is
+// kept, to be fetched again on next use, only when it's known to be the same
+// account's: another account's games must not show under this one, and an
+// account without games could never replace them (an empty list never
+// replaces one with games).
 export async function saveNewLogin(
   store: StoreKey,
   session: StoreSession,
   host: StoreHost = getStoreHost(),
 ) {
-  await storage.withAccountLock(store, () => {
-    storage.saveSession(store, session, host);
+  await storage.withAccountLock(store, async () => {
+    const cookies = await partitionCookies(store, host);
+    storage.saveSession(
+      store,
+      session,
+      host,
+      cookies ?? (COOKIE_STORES.includes(store) ? [] : undefined),
+    );
+    partitionSaved(store);
     const library = cachedLibrary(store);
     if (!library) {
       return;
@@ -549,7 +670,7 @@ export interface RefreshRun {
   fetched: { games?: OwnedGame[]; error?: unknown; partial?: boolean };
   asked: Asked;
   // Aborted when the deadline passed or the account was signed out of:
-  // nothing but renewed tokens is saved.
+  // nothing but what the store renewed (tokens, cookies) is saved.
   signal?: AbortSignal;
 }
 
@@ -564,6 +685,8 @@ async function refreshLocked(
   if (!loaded) {
     throw new Error(`Not signed in to ${STORE_NAMES[store]}`);
   }
+  // (a cookie store's login: in its partition before any request goes out)
+  await restorePartition(store, host, loaded.rev);
   const previous = cachedLibrary(store)?.games || [];
   const run: RefreshRun = {
     store,
@@ -584,6 +707,7 @@ async function refreshLocked(
         }
         run.startedRev = storage.saveSession(store, session, host);
         run.startedWith = _.cloneDeep(session);
+        partitionSaved(store);
       });
     },
   };
@@ -596,8 +720,9 @@ async function refreshLocked(
   return commitRefresh(run, host);
 }
 
-// Saves what a refresh produced: the session (tokens may have been renewed
-// even when listing the games failed) and the library.
+// Saves what a refresh produced: what the store renewed (tokens, a cookie
+// store's cookies; also when listing the games failed or was stopped) and
+// the library.
 //
 // A list that looks cut short isn't saved, because the games it lacks would
 // be taken out of Steam: an empty list never replaces a list with games,
@@ -609,15 +734,13 @@ export async function commitRefresh(
 ): Promise<OwnedLibrary> {
   const { store } = run;
   const name = STORE_NAMES[store];
-  return storage.withAccountLock(store, () => {
+  return storage.withAccountLock(store, async () => {
     // Signing out (or in again) while the games were fetched wins: saving
     // now would bring back the old login.
     if (storage.readSessionInfo(store)?.rev !== run.startedRev) {
       throw accountChanged(store);
     }
-    if (!_.isEqual(run.session, run.startedWith)) {
-      storage.saveSession(store, run.session, host);
-    }
+    await saveRenewed(run, host);
     if (run.fetched.error !== undefined) {
       throw run.fetched.error;
     }
@@ -657,12 +780,47 @@ export async function commitRefresh(
   });
 }
 
+// Saves what the store renewed during a refresh: the session as the store's
+// module left it, and a cookie store's partition cookies, when they changed.
+// Saving the cookies alone keeps the session's rev. (Under the account lock,
+// once the rev is checked.)
+async function saveRenewed(run: RefreshRun, host: StoreHost) {
+  const { store } = run;
+  let cookies: SavedCookie[] | undefined;
+  try {
+    cookies = await partitionCookies(store, host);
+  } catch (err) {
+    // (they stay in the partition, and the next refresh saves them)
+    log(
+      host,
+      `Could not save the ${STORE_NAMES[store]} sign-in cookies: ${messageOf(err)}`,
+    );
+  }
+  if (!_.isEqual(run.session, run.startedWith)) {
+    storage.saveSession(store, run.session, host, cookies);
+  } else if (cookies) {
+    let saved: SavedCookie[] | undefined;
+    try {
+      saved = storage.loadSessionCookies(store, host)?.cookies;
+    } catch {
+      // (unreadable: replaced)
+    }
+    if (!sameCookies(cookies, saved)) {
+      storage.saveSessionCookies(store, cookies, host);
+    }
+  }
+  partitionSaved(store);
+}
+
 // Signs out. Where the store offers a way, it's told first that SRM's login
 // is no longer needed (Epic, Amazon); the others keep it valid until it
-// expires. Then the session and the cached library are removed, also when
-// the store couldn't be told: that returns a warning. A cookie store's
-// partition is emptied last, once a refresh that was running has stopped:
-// an answer still on its way would put renewed sign-in cookies back.
+// expires. Then the session (with a cookie store's saved cookies) and the
+// cached library are removed, also when the store couldn't be told: that
+// returns a warning. A cookie store's partition is emptied last, once a
+// refresh that was running has stopped: an answer still on its way would
+// put renewed sign-in cookies back. (Such a refresh can neither save its
+// cookies nor put the saved ones back into the partition: both check, under
+// the account lock, that its session is still there.)
 export async function signOut(store: StoreKey): Promise<string | null> {
   const host = getStoreHost();
   let warning: string | null = null;
@@ -699,13 +857,17 @@ export async function signOut(store: StoreKey): Promise<string | null> {
       );
     }
   }
+  partitionHolds.delete(store);
   return warning;
 }
 
 // Removes the session and the cached library without telling the store.
 export async function deleteAccount(store: StoreKey) {
   try {
-    await storage.withAccountLock(store, () => storage.deleteAccount(store));
+    await storage.withAccountLock(store, () => {
+      storage.deleteAccount(store);
+      partitionHolds.delete(store);
+    });
     endPendingLogin(store);
     recordFailure(store, null);
   } finally {

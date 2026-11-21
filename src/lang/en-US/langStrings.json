@@ -409,7 +409,7 @@
       "needsSignIn": "The store no longer accepts the saved sign-in. Sign in again.",
       "lastError__i": "The last refresh failed: ${error}",
       "readOnly": "This SRM uses the games the app last fetched; sign in and refresh in the app.",
-      "secretsWarning": "No keyring is available, so sign-ins are saved with Chromium's built-in key, which anyone who can read your files can undo. Set up a keyring (such as GNOME Keyring or KWallet) to keep them safe.",
+      "secretsWarning": "No keyring is available, so sign-ins are encrypted with a fixed key that is the same in every copy of SRM: anyone who can read your files can decrypt them. Set up a keyring (such as GNOME Keyring or KWallet) to keep them safe.",
       "pasteHeading": "Sign in with your browser",
       "working": "Working…",
       "buttons": {

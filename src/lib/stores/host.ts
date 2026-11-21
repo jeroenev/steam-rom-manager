@@ -4,7 +4,13 @@
 // line (plain Node) has none of those and uses cached libraries only; tests
 // use a fake (test/helpers/fake-store-host.ts).
 
-import { LoginCapture, PendingLogin, StoreCookie, StoreKey } from "./types";
+import {
+  LoginCapture,
+  PendingLogin,
+  SavedCookie,
+  StoreCookie,
+  StoreKey,
+} from "./types";
 
 // A response, as much of it as the stores read: unlike SRM's own Fetch, the
 // stores need the URL a request ended up at (GOG answers a dead token with a
@@ -40,11 +46,12 @@ export interface StoreHost {
   // standalone command line may not: it uses what the app last fetched.
   readonly canRefresh: boolean;
   // Whether it may refresh this store's library, when it can't refresh
-  // every store (the app's command line has no cookie partitions, and may
-  // be unable to read the window's sign-ins). Unset: every store.
+  // every store (the app's command line may be unable to read the window's
+  // sign-ins). Unset: every store.
   refreshes?(store: StoreKey): boolean;
   // The network for one store: token stores use the app's network stack,
-  // cookie stores (EA, Battle.net, Humble) their own browser partition.
+  // cookie stores (EA, Battle.net, Humble) their own browser partition, in
+  // memory only.
   fetchFor(store: StoreKey): StoreFetch;
   // Encrypts a secret for storage on disk, and back (Electron safeStorage).
   // Both throw where there is no secret storage.
@@ -64,6 +71,20 @@ export interface StoreHost {
   setCookies?(store: StoreKey, cookies: StoreCookie[]): Promise<void>;
   cookies?(store: StoreKey, url: string): Promise<StoreCookie[]>;
   clearStoreData?(store: StoreKey): Promise<void>;
+  // Cookie stores: the partition's cookies for `sites` (the store's own
+  // registrable domains, PendingLogin.siteDomains; never another site's),
+  // with all importCookies needs to put them back as they were, to be saved
+  // with the session. Values included: secret, never log them.
+  exportCookies?(
+    store: StoreKey,
+    sites: readonly string[],
+  ): Promise<SavedCookie[]>;
+  // Cookie stores: replaces the partition's cookies with saved ones, leaving
+  // out those that have expired.
+  importCookies?(
+    store: StoreKey,
+    cookies: readonly SavedCookie[],
+  ): Promise<void>;
   // A warning for the log (already without secrets).
   log?(message: string): void;
 }

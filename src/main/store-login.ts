@@ -21,12 +21,16 @@ import {
   StoreCookie,
   StoreKey,
 } from "../lib/stores";
-import { domainMatches } from "../lib/stores/http";
+import { isSiteCookie } from "../lib/stores/http";
 
 export interface LoginWindowOptions {
   // SRM's window, which the login window belongs to.
   parent?: BrowserWindow | null;
   partition: string;
+  // The partition is this sign-in's own (a token store's), emptied once the
+  // window closes. A cookie store's is the one its requests go through: it
+  // keeps the sign-in, and only other sites' data goes.
+  temporary: boolean;
 }
 
 // How long a loaded done page gets to be read before the sign-in goes on
@@ -97,12 +101,11 @@ function prepare(ses: Session) {
 
 function runLogin(
   pending: PendingLogin,
-  { parent, partition }: LoginWindowOptions,
+  { parent, partition, temporary }: LoginWindowOptions,
   resolve: (capture: LoginCapture) => void,
   reject: (err: Error) => void,
 ): BrowserWindow {
   const ses = session.fromPartition(partition);
-  const temporary = !partition.startsWith("persist:");
   prepare(ses);
   ses.setUserAgent(pending.userAgent || browserUserAgent(ses.getUserAgent()));
 
@@ -140,10 +143,11 @@ function runLogin(
     // (one listener per session: a cookie store's partition outlives this)
     ses.webRequest.onBeforeRequest(null);
   };
-  // A cookie store's partition outlives the window: what other sites (a
-  // single sign-on with Google, Steam or Apple) left there goes. Never the
-  // store's own sites, so the store's requests through the partition aren't
-  // disturbed.
+  // A cookie store's partition outlives the window (for as long as SRM
+  // runs): what other sites (a single sign-on with Google, Steam or Apple)
+  // left there goes. Never the store's own sites, so the store's requests
+  // through the partition aren't disturbed. (Only the store's own cookies
+  // are saved with the sign-in, whether or not this ran first.)
   const sites = pending.siteDomains ?? [];
   const forgetOtherSites = () => {
     if (!temporary && sites.length) {
@@ -285,13 +289,6 @@ function runLogin(
   return window;
 }
 
-// Whether a cookie for `cookieDomain` belongs to one of `sites` (registrable
-// domains such as "ea.com": the site and every host under it).
-export function isSiteCookie(cookieDomain: string, sites: readonly string[]) {
-  const host = cookieDomain.replace(/^\.+/, "");
-  return host !== "" && sites.some((site) => domainMatches(site, host));
-}
-
 // The storage kinds a page keeps besides cookies.
 const PAGE_STORAGES: Electron.ClearStorageDataOptions["storages"] = [
   "localstorage",
@@ -343,7 +340,6 @@ export async function dropOtherSitesData(
       // (the next one)
     }
   }
-  await ses.cookies.flushStore();
 }
 
 // The cookies `ses` sends to `urls`, values included (secret: never log

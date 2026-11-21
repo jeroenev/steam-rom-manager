@@ -7,11 +7,12 @@
 // through accounts.ea.com and signin.ea.com and back to
 // https://www.ea.com/login_check?code=…; by then accounts.ea.com has set its
 // session cookies (sid, remid). The login is those cookies: they stay in
-// EA's own browser partition (persist:, see the host), which sends them and
-// keeps what EA renews, as a browser would. Nothing secret is in the session
-// SRM saves. (BoilR, without a browser's cookie store, kept the cookies a
-// browser would send to accounts.ea.com in its session instead, and wrote
-// back the ones EA renewed.)
+// EA's own browser partition, which sends them and keeps what EA renews, as
+// a browser would. The partition is in memory: refresh.ts saves its ea.com
+// cookies with the session, encrypted, and puts them back after a restart.
+// Nothing secret is in this module's own session data. (BoilR, without a
+// browser's cookie store, kept the cookies a browser would send to
+// accounts.ea.com in its session, and wrote back the ones EA renewed.)
 //
 // Library: every refresh trades those cookies for a fresh, short-lived
 // access token (accounts.ea.com/connect/auth?client_id=ORIGIN_JS_SDK&…
@@ -129,7 +130,8 @@ export const OWNERSHIP_METHODS: readonly string[] = [
 ];
 
 // What SRM keeps for an EA account. The login itself is the cookies in EA's
-// browser partition, which the host keeps; none of them are in here.
+// browser partition, which are saved beside this (refresh.ts); none of them
+// are in here.
 export interface EaSession {
   // When the login window handed the sign-in over, in milliseconds since
   // 1970.

@@ -1,9 +1,10 @@
 // Sessions and libraries live in <userData>/stores/<store key>/:
-// session.json (the account name, and the session's data encrypted by the
-// host) and library.json (the owned games; not secret, but private, so both
-// are readable by the user only). The record of the last failed refresh and
-// the locks sit next to the store folders, in .status and .locks, so they
-// outlive a sign-out's removal of the folder. Ported from BoilR's storage.rs.
+// session.json (the account name, and the session's data and a cookie
+// store's cookies, encrypted by the host) and library.json (the owned games;
+// not secret, but private, so both are readable by the user only). The
+// record of the last failed refresh and the locks sit next to the store
+// folders, in .status and .locks, so they outlive a sign-out's removal of
+// the folder. Ported from BoilR's storage.rs.
 //
 // The GUI and the command line may run at once, so every change is made
 // under a lock that works across processes: a folder made with mkdir (which
@@ -21,6 +22,7 @@ import {
   OwnedGame,
   OwnedLibrary,
   STORE_NAMES,
+  SavedCookie,
   StoreKey,
   StoreSession,
   isStoreKey,
@@ -57,20 +59,28 @@ function locksFolder() {
   return path.join(root, ".locks");
 }
 
-// session.json. `rev` changes on every save: a refresh that started with
-// another rev belongs to a login that was signed out of or replaced.
+// session.json. `rev` changes on every save of the session: a refresh that
+// started with another rev belongs to a login that was signed out of or
+// replaced.
 interface SessionFile {
   version: 1;
   rev: string;
   accountName: string | null;
   // host.protect(JSON of StoreSession.data)
   data: string;
+  // A cookie store's: host.protect(JSON of its partition's SavedCookie[]),
+  // and a rev that changes whenever they are saved. Saving the cookies alone
+  // keeps `rev`: the store renewed them, the login is the same.
+  cookies?: string;
+  cookiesRev?: string;
 }
 
 // What's known about a saved session without decrypting it.
 export interface SessionInfo {
   rev: string;
   accountName: string | null;
+  // The rev of the saved cookies; null when none are saved.
+  cookiesRev: string | null;
 }
 
 export function readSessionInfo(store: StoreKey): SessionInfo | null {
@@ -78,7 +88,21 @@ export function readSessionInfo(store: StoreKey): SessionInfo | null {
   if (!file || typeof file.rev !== "string") {
     return null;
   }
-  return { rev: file.rev, accountName: file.accountName ?? null };
+  return {
+    rev: file.rev,
+    accountName: file.accountName ?? null,
+    cookiesRev: savedCookiesRev(file),
+  };
+}
+
+function savedCookiesRev(file: SessionFile) {
+  return typeof file.cookies === "string" && typeof file.cookiesRev === "string"
+    ? file.cookiesRev
+    : null;
+}
+
+function newRev() {
+  return crypto.randomBytes(8).toString("hex");
 }
 
 // The saved session, decrypted. A session that can't be read (another
@@ -123,21 +147,113 @@ export function sessionData<T>(
   return session.data as T;
 }
 
-// Saves a session; returns its new rev.
+// Saves a session; returns its new rev. `cookies` (a cookie store's
+// partition) replace the saved cookies; without them, the ones saved before
+// are kept.
 export function saveSession(
   store: StoreKey,
   session: StoreSession,
   host: StoreHost,
+  cookies?: readonly SavedCookie[],
 ): string {
-  const rev = crypto.randomBytes(8).toString("hex");
+  const rev = newRev();
   const file: SessionFile = {
     version: 1,
     rev,
     accountName: session.accountName ?? null,
     data: host.protect(JSON.stringify(session.data)),
   };
+  if (cookies) {
+    Object.assign(file, protectedCookies(cookies, host));
+  } else {
+    let before: SessionFile | null = null;
+    try {
+      before = readJson<SessionFile>(sessionFile(store));
+    } catch {
+      // (a damaged file has no cookies to keep)
+    }
+    if (before && savedCookiesRev(before) !== null) {
+      file.cookies = before.cookies;
+      file.cookiesRev = before.cookiesRev;
+    }
+  }
   writeJson(sessionFile(store), file);
   return rev;
+}
+
+// Replaces a saved session's cookies, keeping the session and its rev (the
+// same login); returns the cookies' new rev. Fails when there is no session.
+export function saveSessionCookies(
+  store: StoreKey,
+  cookies: readonly SavedCookie[],
+  host: StoreHost,
+): string {
+  const file = readJson<SessionFile>(sessionFile(store));
+  if (!file || typeof file.rev !== "string") {
+    throw new Error(`Not signed in to ${STORE_NAMES[store]}`);
+  }
+  const saved = protectedCookies(cookies, host);
+  writeJson(sessionFile(store), { ...file, ...saved });
+  return saved.cookiesRev;
+}
+
+function protectedCookies(cookies: readonly SavedCookie[], host: StoreHost) {
+  return {
+    cookies: host.protect(JSON.stringify(cookies)),
+    cookiesRev: newRev(),
+  };
+}
+
+// A session's saved cookies, decrypted, with the session's rev and theirs;
+// null when there is no session. None saved is an empty list (cookiesRev
+// null). Cookies that can't be read need a new sign-in, as the session does.
+export function loadSessionCookies(
+  store: StoreKey,
+  host: StoreHost,
+): { rev: string; cookiesRev: string | null; cookies: SavedCookie[] } | null {
+  const file = readJson<SessionFile>(sessionFile(store));
+  if (!file || typeof file.rev !== "string") {
+    return null;
+  }
+  const cookiesRev = savedCookiesRev(file);
+  if (cookiesRev === null) {
+    return { rev: file.rev, cookiesRev, cookies: [] };
+  }
+  let cookies: unknown;
+  try {
+    cookies = JSON.parse(host.unprotect(file.cookies!));
+    if (!Array.isArray(cookies)) {
+      throw new Error("no cookies");
+    }
+  } catch (err) {
+    throw loginRejected(
+      `The saved ${STORE_NAMES[store]} login can't be read (${messageOf(err)}). Sign in again.`,
+    );
+  }
+  return { rev: file.rev, cookiesRev, cookies: cookies.filter(isSavedCookie) };
+}
+
+const SAME_SITE: readonly SavedCookie["sameSite"][] = [
+  "unspecified",
+  "no_restriction",
+  "lax",
+  "strict",
+];
+
+function isSavedCookie(cookie: any): cookie is SavedCookie {
+  return (
+    !!cookie &&
+    typeof cookie.name === "string" &&
+    typeof cookie.value === "string" &&
+    typeof cookie.domain === "string" &&
+    typeof cookie.hostOnly === "boolean" &&
+    typeof cookie.path === "string" &&
+    typeof cookie.secure === "boolean" &&
+    typeof cookie.httpOnly === "boolean" &&
+    SAME_SITE.includes(cookie.sameSite) &&
+    (cookie.expirationDate === undefined ||
+      typeof cookie.expirationDate === "number")
+  );
 }
 
 // The cached library; null when there is none. Throws when it can't be

@@ -24,11 +24,13 @@
 //
 // Login: the window opens Ory's sign-in for browsers, with return_to set to
 // the library page; heading there ends the sign-in. The login is the cookies
-// Ory sets in Humble's browser partition (persist:, see the host), which
-// sends them and keeps what Humble renews, as a browser would; nothing secret
-// is in the session SRM saves. Without the window, the user pastes the Cookie
-// header of a signed-in request from their own browser, which goes into the
-// partition (StoreContext.setCookies).
+// Ory sets in Humble's browser partition, which sends them and keeps what
+// Humble renews, as a browser would. The partition is in memory: refresh.ts
+// saves its humblebundle.com cookies with the session, encrypted, and puts
+// them back after a restart. Nothing secret is in this module's own session
+// data. Without the window, the user pastes the Cookie header of a
+// signed-in request from their own browser, which goes into the partition
+// (StoreContext.setCookies).
 //
 // Library: the session status first (signed out asks to sign in again), then
 // every page of filterUserLibrary, asked for as the library page asks (newest
@@ -133,8 +135,8 @@ const SIGNED_OUT_CODES = [
 ];
 
 // What SRM keeps for a Humble account. The login itself is the cookies in
-// Humble's browser partition, which the host keeps; none of them are in
-// here.
+// Humble's browser partition, which are saved beside this (refresh.ts);
+// none of them are in here.
 export interface HumbleSession {
   // When the sign-in finished, in milliseconds since 1970.
   signedInAt: number;

@@ -6,7 +6,11 @@ import * as path from "path";
 import { spawn } from "child_process";
 import * as paths from "../../src/paths";
 import * as storage from "../../src/lib/stores/storage";
-import { ownedGame, OwnedLibrary } from "../../src/lib/stores/types";
+import {
+  ownedGame,
+  OwnedLibrary,
+  SavedCookie,
+} from "../../src/lib/stores/types";
 import { FakeStoreHost } from "../helpers/fake-store-host";
 
 const host = new FakeStoreHost();
@@ -39,6 +43,7 @@ describe("store storage", () => {
     expect(storage.readSessionInfo("gog")).toEqual({
       rev,
       accountName: "player",
+      cookiesRev: null,
     });
     const onDisk = fs.readFileSync(storage.sessionFile("gog"), "utf8");
     expect(onDisk).not.toContain("abc");
@@ -47,6 +52,66 @@ describe("store storage", () => {
     expect(
       storage.saveSession("gog", { accountName: "player", data: {} }, host),
     ).not.toBe(rev);
+  });
+
+  it("keeps a cookie store's cookies with the session, encrypted, and their own rev", () => {
+    const cookie: SavedCookie = {
+      name: "sid",
+      value: "cookie-secret",
+      domain: ".ea.com",
+      hostOnly: false,
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "lax",
+    };
+    const session = { accountName: "player", data: { signedInAt: 1 } };
+    const rev = storage.saveSession("gog", session, host, [cookie]);
+    const first = storage.loadSessionCookies("gog", host)!;
+    expect(first).toMatchObject({ rev, cookies: [cookie] });
+    expect(first.cookiesRev).toEqual(expect.any(String));
+    expect(fs.readFileSync(storage.sessionFile("gog"), "utf8")).not.toContain(
+      "cookie-secret",
+    );
+
+    // Renewed cookies alone: the same login, so the same rev.
+    const renewed = { ...cookie, value: "renewed", expirationDate: 2e9 };
+    const cookiesRev = storage.saveSessionCookies("gog", [renewed], host);
+    expect(storage.readSessionInfo("gog")).toEqual({
+      rev,
+      accountName: "player",
+      cookiesRev,
+    });
+    expect(storage.loadSessionCookies("gog", host)?.cookies).toEqual([renewed]);
+
+    // The session saved without cookies keeps the saved ones.
+    const again = storage.saveSession("gog", session, host);
+    expect(storage.loadSessionCookies("gog", host)).toEqual({
+      rev: again,
+      cookiesRev,
+      cookies: [renewed],
+    });
+    // A new list replaces them; one that isn't a cookie is left out.
+    storage.saveSession("gog", session, host, [
+      cookie,
+      { name: "broken" } as any,
+    ]);
+    expect(storage.loadSessionCookies("gog", host)?.cookies).toEqual([cookie]);
+
+    // Cookies another key encrypted need a new sign-in, as the session does.
+    const other = new FakeStoreHost();
+    other.unprotect = () => {
+      throw new Error("another machine's key");
+    };
+    expect(() => storage.loadSessionCookies("gog", other)).toThrow(
+      /can't be read.*Sign in again/,
+    );
+
+    storage.deleteAccount("gog");
+    expect(storage.loadSessionCookies("gog", host)).toBeNull();
+    expect(() => storage.saveSessionCookies("gog", [cookie], host)).toThrow(
+      "Not signed in",
+    );
   });
 
   it("a session this host can't decrypt asks for a new sign-in", () => {

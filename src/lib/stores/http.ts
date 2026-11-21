@@ -399,6 +399,13 @@ export function domainMatches(cookieDomain: string, host: string): boolean {
   return lowerHost === domain || lowerHost.endsWith(`.${domain}`);
 }
 
+// Whether a cookie for `cookieDomain` belongs to one of `sites` (registrable
+// domains such as "ea.com": the site and every host under it).
+export function isSiteCookie(cookieDomain: string, sites: readonly string[]) {
+  const host = cookieDomain.replace(/^\.+/, "");
+  return host !== "" && sites.some((site) => domainMatches(site, host));
+}
+
 // A game's title as stores write it, without trademark signs and with
 // single spaces (Playnite's RemoveTrademarks): one game, one title, whichever
 // store lists it.

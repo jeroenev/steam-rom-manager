@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("electron", () => ({}));
 
-import { dropOtherSitesData, isSiteCookie } from "../../src/main/store-login";
+import { dropOtherSitesData } from "../../src/main/store-login";
+import { isSiteCookie } from "../../src/lib/stores/http";
 import { storeClient } from "../../src/lib/stores/registry";
 import { COOKIE_STORES, STORE_KEYS } from "../../src/lib/stores/types";
 
@@ -96,7 +97,6 @@ describe("the login window", () => {
       "remove https://steamcommunity.com/ steamLoginSecure",
       "remove http://google.com/ SID",
       "remove https://notea.com/p x",
-      "flush",
     ]);
     expect(cleared.map((o) => o.origin)).toEqual([
       "https://store.steampowered.com",

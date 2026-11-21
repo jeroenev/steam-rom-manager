@@ -8,11 +8,13 @@
 // browser on to account.battle.net/callback/oauth2/code/account-settings,
 // where the window stops. By then Battle.net's long-lived sign-in cookies
 // (on .battle.net) are in the partition, which keeps them, and takes
-// Battle.net's renewals, as a browser does. Those cookies are the login: SRM
-// keeps none of them itself. The account site's own session lasts about 30
-// minutes, so the sign-in and every refresh replay that OAuth sign-in
-// through the partition (redirects followed, as Playnite does) before they
-// call the account API.
+// Battle.net's renewals, as a browser does. Those cookies are the login: this
+// module keeps none of them itself. The partition is in memory: refresh.ts
+// saves its battle.net and blizzard.com cookies with the session, encrypted,
+// and puts them back after a restart. The account site's own session lasts
+// about 30 minutes, so the sign-in and every refresh replay that OAuth
+// sign-in through the partition (redirects followed, as Playnite does)
+// before they call the account API.
 //
 // Library: account.battle.net/api/games-and-subs lists game accounts by
 // Blizzard title id, which the product table (PRODUCTS) maps to launcher
@@ -242,7 +244,8 @@ export function productForTitle(
 }
 
 // What SRM keeps for a Battle.net account: nothing secret. The login is the
-// cookies of the store's browser partition.
+// cookies of the store's browser partition, which are saved beside this
+// (refresh.ts).
 export interface BattleNetSession {
   // When the user signed in, in milliseconds since 1970.
   signedInAt: number;

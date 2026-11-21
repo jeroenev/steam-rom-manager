@@ -10,6 +10,7 @@ import {
 import {
   LoginCapture,
   PendingLogin,
+  SavedCookie,
   StoreCookie,
   StoreKey,
 } from "../../src/lib/stores/types";
@@ -43,6 +44,14 @@ export class FakeStoreHost implements StoreHost {
   setCookies?: (store: StoreKey, cookies: StoreCookie[]) => Promise<void>;
   cookies?: (store: StoreKey, url: string) => Promise<StoreCookie[]>;
   clearStoreData?: (store: StoreKey) => Promise<void>;
+  exportCookies?: (
+    store: StoreKey,
+    sites: readonly string[],
+  ) => Promise<SavedCookie[]>;
+  importCookies?: (
+    store: StoreKey,
+    cookies: readonly SavedCookie[],
+  ) => Promise<void>;
   requests: FakeRequest[] = [];
   opened: string[] = [];
   logs: string[] = [];

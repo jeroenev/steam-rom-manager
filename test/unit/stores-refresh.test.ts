@@ -131,6 +131,8 @@ describe("store accounts", () => {
     delete host.cookies;
     delete host.setCookies;
     delete host.clearStoreData;
+    delete host.exportCookies;
+    delete host.importCookies;
     host.handler = () => ({ status: 404 });
   });
   afterAll(() => setStoreHost(readOnlyStoreHost));
@@ -221,6 +223,58 @@ describe("store accounts", () => {
       "read battlenet https://account.example/",
       "set battlenet pasted",
     ]);
+  });
+
+  it("a cookie store's own cookies are saved with its sign-in and refreshes, and put back when another SRM saved newer ones", async () => {
+    const asked: string[] = [];
+    const cookie = (domain: string, name: string, value = "v") => ({
+      name,
+      value,
+      domain,
+      hostOnly: false,
+      path: "/",
+      secure: true,
+      httpOnly: true,
+      sameSite: "lax" as const,
+    });
+    host.exportCookies = async (store, sites) => {
+      asked.push(`export ${store} ${sites.join(",")}`);
+      // (a host that hands over another site's too: still not saved)
+      return [cookie(".ea.com", "sid"), cookie(".google.com", "SID")];
+    };
+    host.importCookies = async (store, cookies) => {
+      asked.push(`import ${store} ${cookies.map((c) => c.name).join(",")}`);
+    };
+    registerStoreClient({
+      ...realClients.get("ea")!,
+      completeLogin: async () => ({ accountName: "player", data: {} }),
+      listLibrary: async () => {
+        asked.push("list");
+        return games(1);
+      },
+    });
+    await refresh.completeLogin(refresh.pendingLogin("ea"), { cookies: [] });
+    expect(storage.loadSessionCookies("ea", host)?.cookies).toEqual([
+      cookie(".ea.com", "sid"),
+    ]);
+    // The partition holds them already.
+    await refresh.refreshLibrary("ea");
+    // Another SRM saved newer ones: they go in before the first request.
+    storage.saveSessionCookies("ea", [cookie(".ea.com", "sid", "new")], host);
+    await refresh.refreshLibrary("ea");
+    expect(asked).toEqual([
+      "export ea ea.com",
+      "list",
+      "export ea ea.com",
+      "import ea sid",
+      "list",
+      "export ea ea.com",
+    ]);
+    // A token store has none.
+    registerStoreClient(fakeClient("epic", async () => games(1)));
+    await refresh.completeLogin(refresh.pendingLogin("epic"), { pasted: "t" });
+    expect(storage.readSessionInfo("epic")?.cookiesRev).toBeNull();
+    expect(asked).toHaveLength(6);
   });
 
   it("stores SRM can't sign in to yet say so", async () => {

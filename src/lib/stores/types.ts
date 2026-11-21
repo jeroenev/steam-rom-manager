@@ -42,9 +42,13 @@ export function isStoreKey(value: unknown): value is StoreKey {
   return (STORE_KEYS as readonly unknown[]).includes(value);
 }
 
-// The stores whose login is a browser's cookies rather than tokens: the app
-// keeps them in a browser partition of their own, which renews them as a
-// browser would. (The others keep tokens or a key in session.json.)
+// The stores whose login is a browser's cookies rather than tokens. Their
+// requests go through a browser partition of their own, which sends the
+// cookies and takes the store's renewals as a browser would. That partition
+// is in memory only: its cookies are saved with the session (SavedCookie,
+// encrypted like every sign-in) and put back into it before the requests of
+// a later run (refresh.ts). (The others keep tokens or a key in
+// session.json.)
 export const COOKIE_STORES: readonly StoreKey[] = ["ea", "battlenet", "humble"];
 
 // One game the account owns.
@@ -88,6 +92,28 @@ export interface StoreCookie {
   domain: string;
 }
 
+// A cookie of a cookie store's partition as it's saved with the session:
+// everything needed to put it back as the store set it. Its value is secret:
+// never log it.
+export interface SavedCookie {
+  name: string;
+  value: string;
+  // As the browser gives it: a host-only cookie's host (accounts.ea.com), or
+  // a domain cookie's domain with a leading dot (.ea.com).
+  domain: string;
+  // Sent to that host only, not to the hosts under it: the site set it
+  // without a Domain attribute.
+  hostOnly: boolean;
+  path: string;
+  secure: boolean;
+  httpOnly: boolean;
+  sameSite: "unspecified" | "no_restriction" | "lax" | "strict";
+  // When it expires, in seconds since 1970. Absent for a session cookie,
+  // which a browser forgets when it closes, but which may be the login
+  // itself: it's kept until the store stops taking it.
+  expirationDate?: number;
+}
+
 // How a login can be finished without SRM's login window: the user signs
 // in with their own browser and pastes one value back.
 export type ManualLogin =
@@ -116,9 +142,10 @@ export interface PendingLogin {
   // URLs whose cookies the window hands over when the login is done.
   cookieUrls: string[];
   // Cookie stores: the sites (registrable domains) whose data the store's
-  // partition keeps once the window closes. Another site's (a Google, Steam
-  // or Apple sign-in the store's page offered) is removed: SRM never needs
-  // it. Token stores sign in in a partition that's thrown away anyway.
+  // partition keeps once the window closes, and whose cookies are saved with
+  // the session. Another site's (a Google, Steam or Apple sign-in the
+  // store's page offered) is removed, and never saved: SRM never needs it.
+  // Token stores sign in in a partition that's thrown away anyway.
   siteDomains?: string[];
   manual: ManualLogin;
   // The user agent the login window uses, when the store needs a particular
