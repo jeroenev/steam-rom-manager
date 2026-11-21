@@ -1,6 +1,7 @@
 // Which stores this version of SRM can sign in to. A store comes in with one
 // import and one line here; until then its account shows as "not yet".
 
+import { epicClient } from "./epic";
 import { gogClient } from "./gog";
 import { itchClient } from "./itch";
 import { StoreClient, StoreKey } from "./types";
@@ -20,5 +21,6 @@ export function storeClient(store: StoreKey): StoreClient | undefined {
   return clients.get(store);
 }
 
+registerStoreClient(epicClient);
 registerStoreClient(gogClient);
 registerStoreClient(itchClient);
