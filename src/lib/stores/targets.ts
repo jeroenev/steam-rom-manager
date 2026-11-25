@@ -9,9 +9,13 @@
 // program (PowerShell for Epic, EA and Ubisoft Connect, GalaxyClient.exe,
 // Amazon Games.exe, Battle.net.exe): once the game is installed and that
 // parser lists it under the same title, the shortcut keeps its id, and with
-// it its artwork and exceptions. (Not for an EA Desktop or UPlay parser that
-// waits for the game to exit: its shortcuts run SRM's launch script,
-// lib/launch-wrapper.)
+// it its artwork and exceptions. Where that parser's shortcuts run SRM's
+// launch script instead (lib/launch-wrapper: "Wait for the game to exit" in
+// the Epic, EA Desktop and UPlay parsers, Battle.net's always, or the user's
+// "Wrap shortcut in a shell script"), the Store Account parser wraps its
+// shortcut too, around this same target and without waiting for anything
+// (store-account.parser.ts): every wrapped shortcut has the same program, so
+// the title alone makes the id.
 
 import * as fs from "fs";
 import * as os from "os";

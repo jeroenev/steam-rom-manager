@@ -6,6 +6,7 @@ import {
   UserConfiguration,
 } from "../../models";
 import { APP } from "../../variables";
+import * as os from "os";
 import * as path from "path";
 import * as _ from "lodash";
 import {
@@ -98,6 +99,65 @@ export function installedLocationsOf(
     eaGamesDirs: set("EA Desktop", "eaGamesDir"),
     itchAppDataDirs: set("itch.io", "itchIoAppDataOverride"),
   };
+}
+
+// The stores whose installed games get shortcuts that run SRM's launch
+// script (ParsersStore sets it before a run from all the parsers). A
+// wrapped shortcut's program is the same for every game (wrapperExecutable),
+// so its Steam id comes from its title alone: a Store Account shortcut is
+// wrapped as well where the store's launcher parser wraps its games, and
+// keeps its id, artwork and exceptions once the game is installed and that
+// parser lists it under the same title.
+let wrappingLaunchers: readonly StoreKey[] = [];
+
+export function setWrappingLaunchers(stores: readonly StoreKey[]) {
+  wrappingLaunchers = [...stores];
+}
+
+// Each store's launcher parser, and when it wraps its games itself besides
+// the user's "Wrap shortcut in a shell script": with "Wait for the game to
+// exit" (Windows, launching via the launcher), and Battle.net's always.
+const LAUNCHER_PARSERS: {
+  store: StoreKey;
+  type: ParserType;
+  waits?: (inputs: { [key: string]: any }) => boolean;
+}[] = [
+  {
+    store: "epic",
+    type: "Epic",
+    waits: (inputs) => !!inputs.epicLauncherMode && !!inputs.epicWaitForExit,
+  },
+  { store: "gog", type: "GOG Galaxy" },
+  { store: "amazon", type: "Amazon Games" },
+  {
+    store: "ea",
+    type: "EA Desktop",
+    waits: (inputs) => !!inputs.eaLauncherMode && !!inputs.eaWaitForExit,
+  },
+  { store: "battlenet", type: "Battle.net", waits: () => true },
+  { store: "itch", type: "itch.io" },
+  {
+    store: "ubisoft",
+    type: "UPlay",
+    waits: (inputs) => !!inputs.uplayLauncherMode && !!inputs.uplayWaitForExit,
+  },
+];
+
+// The stores whose launcher parser among `configs` wraps its games: an
+// enabled one does (a disabled parser adds no shortcut to match).
+export function wrappingLaunchersOf(
+  configs: readonly UserConfiguration[],
+  osType: string = os.type(),
+): StoreKey[] {
+  return LAUNCHER_PARSERS.filter(({ type, waits }) =>
+    configs.some(
+      (config) =>
+        !config.disabled &&
+        config.parserType === type &&
+        (!!config.scriptWrapper?.enabled ||
+          (osType === "Windows_NT" && !!waits?.(config.parserInputs ?? {}))),
+    ),
+  ).map(({ store }) => store);
 }
 
 // In the app, how long the parser waits for an old library to be fetched
@@ -245,6 +305,7 @@ export function storeAccountStamp(inputs: { [key: string]: any }): string {
     signedIn(store),
     cachedLibrary(store)?.fetchedAt ?? null,
     installedLocations,
+    wrappingLaunchers.includes(store),
   ]);
 }
 
@@ -422,6 +483,7 @@ export class StoreAccountParser implements GenericParser {
       (game) => installTarget(game, installWith, launchers).via === "heroic",
     );
 
+    const wrapped = wrappingLaunchers.includes(store);
     return {
       success: games.map((game) => {
         const target = installTarget(game, installWith, launchers);
@@ -434,6 +496,13 @@ export class StoreAccountParser implements GenericParser {
           fileLaunchOptions: target.args,
           startInDirectory: target.startDir,
           ...(sgdbPlatformId && { sgdbPlatformId }),
+          // Where the launcher parser's shortcut for the installed game runs
+          // SRM's launch script, so does this one (the same program, so the
+          // same Steam id): it runs the same command as unwrapped, which only
+          // opens the launcher's install dialog, and waits for nothing. (Not
+          // a Heroic shortcut: it keeps starting the game once installed.)
+          ...(wrapped &&
+            target.via !== "heroic" && { launchWrapper: { noWait: true } }),
         };
       }),
       failed: [],

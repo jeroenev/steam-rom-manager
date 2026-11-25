@@ -13,7 +13,9 @@ import { FileParser } from "../lib/file-parser";
 import {
   installedLocationsOf,
   setInstalledLocations,
+  setWrappingLaunchers,
   storeAccountStamp,
+  wrappingLaunchersOf,
 } from "../lib/parsers/store-account.parser";
 import { ParseCache } from "./parse-cache";
 import { FuzzyMatcher } from "../lib/fuzzy-matcher";
@@ -482,6 +484,9 @@ export class ParsersStore {
     // A Store Account parser leaves out games installed where the user's
     // platform parsers read, not only where launchers keep games by default.
     setInstalledLocations(installedLocationsOf([...this.configs, ...configs]));
+    // Its shortcuts run SRM's launch script where the store's launcher
+    // parser's do, so a game keeps its shortcut once it's installed.
+    setWrappingLaunchers(wrappingLaunchersOf([...this.configs, ...configs]));
     const settings = this.settings.get();
     if (!reuse) {
       const parsedData = await this.fileParser.executeFileParser(

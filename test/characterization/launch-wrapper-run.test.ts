@@ -14,6 +14,10 @@ import {
   wrapperFile,
 } from "../../src/lib/launch-wrapper";
 import { tempDir } from "../helpers/fixtures";
+import {
+  POWERSHELL_EXE,
+  powershellOpen,
+} from "../../src/lib/helpers/launchers";
 
 const windows = process.platform === "win32";
 
@@ -169,6 +173,47 @@ describe("launch script", () => {
 
   // A Store Account shortcut opening a launcher's install dialog: the launch
   // starts the launcher, which stays open; nothing is a game to wait for.
+  // A wrapped Store Account shortcut runs its usual command through the
+  // script: PowerShell opening a link, with the link quoted inside
+  // -Command. (A .cmd stands in for the launcher's link.)
+  it.runIf(windows)(
+    "a wrapped Store Account shortcut's PowerShell command opens its link",
+    async () => {
+      const root = tempDir("launch-store");
+      const marker = path.join(root, "opened.txt");
+      const link = path.join(root, "install.cmd");
+      fs.writeFileSync(link, `@echo off\r\necho opened>"${marker}"\r\n`);
+      await installLaunchScripts();
+      await writeWrapperFile("11111111", "132", {
+        title: "Store Account Game",
+        wrapper: makeLaunchWrapper(`"${POWERSHELL_EXE}"`, undefined, {
+          noWait: true,
+        }),
+        launchOptions: powershellOpen(link),
+        startInDirectory: path.win32.dirname(POWERSHELL_EXE),
+      });
+      const run = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          wrapperFile("11111111", "132"),
+        ],
+        { encoding: "utf8", timeout: 90000 },
+      );
+      expect(run.status, run.stderr).toBe(0);
+      // (the hidden PowerShell and the .cmd it opens run on their own)
+      const until = Date.now() + 20000;
+      while (!fs.existsSync(marker) && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(fs.readFileSync(marker, "utf8").trim()).toBe("opened");
+    },
+    60000,
+  );
+
   it("a launch that only opens something (noWait) waits for nothing, not even what it started", async () => {
     const root = tempDir("launch-nowait");
     const order = path.join(root, "order.txt");
