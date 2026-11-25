@@ -165,13 +165,23 @@ export function readProductConfig(text: string): ProductConfig | undefined {
   };
 }
 
-// The title: `name`, often a key into `localizations: default:` (l1, NAME,
-// GAMENAME) rather than the title itself; else `display_name`, else the
-// installer's game_identifier (the UPlay parser's title).
+// The title: the installer's game_identifier as it is, the title SRM's UPlay
+// parser gives the installed game, so that the shortcut keeps its id once
+// the game is installed (the name can differ: "Rabbids Coding!" for
+// RabbidsCoding, a typographic apostrophe). Without one: `name`, often a key
+// into `localizations: default:` (l1, NAME, GAMENAME) rather than the title
+// itself, else `display_name`, cleaned.
 export function productTitle(
   root: any,
   localizations: any,
 ): string | undefined {
+  const identifier = root.installer?.game_identifier;
+  if (
+    (typeof identifier === "string" || typeof identifier === "number") &&
+    String(identifier).trim() !== ""
+  ) {
+    return String(identifier);
+  }
   const strings = localizations?.default;
   const localized = (key: string) => {
     const value =
@@ -180,11 +190,7 @@ export function productTitle(
       ? String(value)
       : undefined;
   };
-  for (const candidate of [
-    root.name,
-    root.display_name,
-    root.installer?.game_identifier,
-  ]) {
+  for (const candidate of [root.name, root.display_name]) {
     if (typeof candidate !== "string" && typeof candidate !== "number") {
       continue;
     }

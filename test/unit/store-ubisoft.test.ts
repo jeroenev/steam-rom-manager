@@ -269,7 +269,32 @@ describe("Ubisoft Connect's caches", () => {
 });
 
 describe("Ubisoft Connect's games", () => {
-  it("titles: the name, or the localized text it is a key of, cleaned", () => {
+  it("titles: the UPlay parser's, so the shortcut keeps its id once the game is installed", () => {
+    const title = (yaml: string) => readProductConfig(yaml)?.title;
+    // The installer's game_identifier, as it is, wins over the name.
+    for (const name of ["Rabbids Coding!", "l1"]) {
+      expect(
+        title(
+          "root:\n" +
+            `  name: ${name}\n` +
+            "  installer:\n    game_identifier: RabbidsCoding\n" +
+            "localizations:\n  default:\n    l1: Rabbids Coding!\n",
+        ),
+      ).toBe("RabbidsCoding");
+    }
+    expect(
+      title(
+        "root:\n  name: x\n  installer:\n    game_identifier: Assassin’s Creed® Origins\n",
+      ),
+    ).toBe("Assassin’s Creed® Origins");
+    expect(
+      title(
+        "root:\n  name: Far Cry® 3\n  installer:\n    game_identifier: '  '\n",
+      ),
+    ).toBe("Far Cry 3");
+  });
+
+  it("titles without a game_identifier: the name, or the localized text it is a key of, cleaned", () => {
     const title = (yaml: string) => readProductConfig(yaml)?.title;
     expect(title(config({ name: "Far Cry® 3" }))).toBe("Far Cry 3");
     for (const key of ["l1", "NAME", "GAMENAME"]) {
@@ -286,13 +311,8 @@ describe("Ubisoft Connect's games", () => {
     expect(
       title(config({ name: "Rayman Origins" }, "localizations: {}\n")),
     ).toBe("Rayman Origins");
-    // No name: display_name, then the installer's game_identifier.
+    // No name: display_name.
     expect(title(config({ display_name: '"Watch Dogs"' }))).toBe("Watch Dogs");
-    expect(
-      title(
-        "root:\n  installer:\n    game_identifier: Trials Rising\n  start_game: {}\n",
-      ),
-    ).toBe("Trials Rising");
     expect(title("root:\n  name: '   '\n")).toBeUndefined();
   });
 
