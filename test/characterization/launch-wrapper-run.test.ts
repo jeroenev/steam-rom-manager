@@ -14,6 +14,10 @@ import {
   wrapperFile,
 } from "../../src/lib/launch-wrapper";
 import { tempDir } from "../helpers/fixtures";
+import {
+  POWERSHELL_EXE,
+  powershellOpen,
+} from "../../src/lib/helpers/launchers";
 
 const windows = process.platform === "win32";
 
@@ -166,6 +170,118 @@ describe("launch script", () => {
     },
     120000,
   );
+
+  // A Store Account shortcut opening a launcher's install dialog: the launch
+  // starts the launcher, which stays open; nothing is a game to wait for.
+  // A wrapped Store Account shortcut runs its usual command through the
+  // script: PowerShell opening a link, with the link quoted inside
+  // -Command. (A .cmd stands in for the launcher's link.)
+  it.runIf(windows)(
+    "a wrapped Store Account shortcut's PowerShell command opens its link",
+    async () => {
+      const root = tempDir("launch-store");
+      const marker = path.join(root, "opened.txt");
+      const link = path.join(root, "install.cmd");
+      fs.writeFileSync(link, `@echo off\r\necho opened>"${marker}"\r\n`);
+      await installLaunchScripts();
+      await writeWrapperFile("11111111", "132", {
+        title: "Store Account Game",
+        wrapper: makeLaunchWrapper(`"${POWERSHELL_EXE}"`, undefined, {
+          noWait: true,
+        }),
+        launchOptions: powershellOpen(link),
+        startInDirectory: path.win32.dirname(POWERSHELL_EXE),
+      });
+      const run = spawnSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          wrapperFile("11111111", "132"),
+        ],
+        { encoding: "utf8", timeout: 90000 },
+      );
+      expect(run.status, run.stderr).toBe(0);
+      // (the hidden PowerShell and the .cmd it opens run on their own)
+      const until = Date.now() + 20000;
+      while (!fs.existsSync(marker) && Date.now() < until) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      expect(fs.readFileSync(marker, "utf8").trim()).toBe("opened");
+    },
+    60000,
+  );
+
+  it("a launch that only opens something (noWait) waits for nothing, not even what it started", async () => {
+    const root = tempDir("launch-nowait");
+    const order = path.join(root, "order.txt");
+    const step = (name: string) => {
+      const p = path.join(root, windows ? `${name}.ps1` : `${name}.sh`);
+      fs.writeFileSync(
+        p,
+        windows
+          ? `Add-Content '${order}' "${name} $env:SRM_STAGE"\r\n`
+          : `#!/bin/sh\necho "${name} $SRM_STAGE" >> '${order}'\n`,
+        { mode: 0o755 },
+      );
+      return p;
+    };
+    // the "launcher": starts and stays open for 40 s
+    const launcher = path.join(root, windows ? "launcher.cmd" : "launcher.sh");
+    fs.writeFileSync(
+      launcher,
+      windows
+        ? "@echo off\r\nping -n 40 127.0.0.1 >nul\r\n"
+        : "#!/bin/sh\nsleep 40\n",
+      { mode: 0o755 },
+    );
+    await installLaunchScripts();
+    await writeWrapperFile("11111111", "131", {
+      title: "Install Only Game",
+      wrapper: makeLaunchWrapper(`"${launcher}"`, undefined, {
+        noWait: true,
+        preLaunch: [{ script: step("pre") }],
+        postLaunch: [{ script: step("post") }],
+        postExit: [{ script: step("exit") }],
+      }),
+      launchOptions: "",
+      startInDirectory: root,
+    });
+    const began = Date.now();
+    const run = windows
+      ? spawnSync(
+          "powershell.exe",
+          [
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            wrapperFile("11111111", "131"),
+          ],
+          { encoding: "utf8", timeout: 90000 },
+        )
+      : spawnSync("/bin/sh", [wrapperFile("11111111", "131")], {
+          encoding: "utf8",
+          timeout: 90000,
+        });
+    expect(run.status, run.stderr).toBe(0);
+    expect((Date.now() - began) / 1000).toBeLessThan(25);
+    expect(fs.readFileSync(order, "utf8").trim().split(/\r?\n/)).toEqual([
+      "pre pre-launch",
+      "exit post-exit",
+    ]);
+    const log = fs
+      .readFileSync(launchLog(), "utf8")
+      .split(/\r?\n/)
+      .filter((line) => line.includes("[Install Only Game]"));
+    expect(
+      log.some((line) => line.includes("opened; no game to wait for")),
+    ).toBe(true);
+    expect(log.some((line) => line.includes("game exited"))).toBe(false);
+    expect(log.some((line) => line.includes("didn't start"))).toBe(false);
+  }, 120000);
 
   // (Another signed-in user playing the same game from a shared library: their
   // copy, named like the game's executable but with a path this user can't

@@ -86,18 +86,24 @@ srm_pid=$!
 set +m
 srm_log "started $SRM_COMMAND"
 
-srm_log "game started"
-srm_stage post-launch SRM_POSTLAUNCH
+if [ "${SRM_NO_WAIT:-}" = 1 ]; then
+  # (the launch only opened something, such as a launcher's install dialog:
+  # no game runs, and what was started may stay open)
+  srm_log "opened; no game to wait for"
+else
+  srm_log "game started"
+  srm_stage post-launch SRM_POSTLAUNCH
 
-# Wait until the game's processes are gone (and stay gone for a few seconds:
-# some games restart themselves).
-srm_gone=0
-while [ "$srm_gone" -lt 3 ]; do
-  if srm_running "$srm_pid"; then srm_gone=0; else srm_gone=$((srm_gone + 1)); fi
-  sleep 2
-done
-wait "$srm_pid" 2>/dev/null
-srm_log "game exited"
+  # Wait until the game's processes are gone (and stay gone for a few
+  # seconds: some games restart themselves).
+  srm_gone=0
+  while [ "$srm_gone" -lt 3 ]; do
+    if srm_running "$srm_pid"; then srm_gone=0; else srm_gone=$((srm_gone + 1)); fi
+    sleep 2
+  done
+  wait "$srm_pid" 2>/dev/null
+  srm_log "game exited"
+fi
 
 srm_stage post-exit SRM_POSTEXIT
 rm -rf "$SRM_RUN_DIR"

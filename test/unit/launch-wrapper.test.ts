@@ -142,6 +142,32 @@ describe("launch wrapper", () => {
     expect(text).toContain('"folder": "C:\\\\Games\\\\X"');
   });
 
+  it("a launch that only opens something (noWait) says so in the file", () => {
+    const game = (wrapper: any) => ({
+      title: "X",
+      wrapper,
+      launchOptions: '-Command "&Start-Process \\"uplay://install/1\\""',
+      startInDirectory: "",
+    });
+    const opens = makeLaunchWrapper('"C:\\ps.exe"', undefined, {
+      noWait: true,
+    });
+    expect(opens).toMatchObject({ target: '"C:\\ps.exe"', noWait: true });
+    expect(wrapperFileContent(game(opens), "Windows")).toContain(
+      '"noWait": true',
+    );
+    expect(wrapperFileContent(game(opens), "Unix").split("\n")).toContain(
+      "SRM_NO_WAIT=1",
+    );
+    // (otherwise nothing changes)
+    const waits = makeLaunchWrapper('"C:\\ps.exe"', user(), {});
+    expect(waits).not.toHaveProperty("noWait");
+    expect(wrapperFileContent(game(waits), "Windows")).not.toContain("noWait");
+    expect(wrapperFileContent(game(waits), "Unix")).not.toContain(
+      "SRM_NO_WAIT",
+    );
+  });
+
   it("writes the parsers' scripts, PowerShell ones with a byte order mark", async () => {
     await installLaunchScripts();
     for (const name of [

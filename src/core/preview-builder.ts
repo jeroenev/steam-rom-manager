@@ -68,8 +68,9 @@ const accountKey = (steamDirectory: string, accountID: string) =>
 // installed) with one of them is left out: it is that parser's game (an
 // installed copy its id didn't match, such as an EA game whose content id
 // wasn't known; or one installed from another store whose launcher-mode
-// parser uses the same program, PowerShell for Epic and EA), and would
-// otherwise replace it or put it in "Not installed". Two Store Account
+// parser uses the same program: PowerShell for Epic and EA, or SRM's launch
+// script for wrapped shortcuts), and would otherwise replace it or put it
+// in "Not installed". Two Store Account
 // parsers with the same app id: ownedInOtherStores settles it by the store
 // order when their stores differ; for one store's, the first one's.
 export function otherParsersAppIds(

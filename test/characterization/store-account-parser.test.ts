@@ -25,8 +25,11 @@ import {
   gamesToAdd,
   setStoreAccountEnvironment,
   setStoreAccountRefreshWait,
+  setWrappingLaunchers,
   storeAccountStamp,
+  wrappingLaunchersOf,
 } from "../../src/lib/parsers/store-account.parser";
+import { wrapperExecutable } from "../../src/lib/launch-wrapper";
 import { readOnlyStoreHost, setStoreHost } from "../../src/lib/stores/host";
 import * as refresh from "../../src/lib/stores/refresh";
 import {
@@ -258,6 +261,8 @@ describe("Store Account parser (characterization)", () => {
   afterEach(async () => {
     setStoreAccountEnvironment();
     setStoreAccountRefreshWait(null);
+    // (ParsersStore sets it before a run, from its parsers)
+    setWrappingLaunchers([]);
     host.handler = noNetwork;
     for (const store of STORE_KEYS) {
       await refresh.deleteAccount(store);
@@ -548,6 +553,107 @@ describe("Store Account parser (characterization)", () => {
     expect(
       generateShortAppId(file.modifiedExecutableLocation, file.titles.final),
     ).toBe(generateShortAppId(`"${GALAXY_EXE}"`, file.titles.final));
+  });
+
+  // (the UPlay parser waits for the game only on Windows)
+  it.runIf(process.platform === "win32")(
+    "goes through SRM's launch script where the UPlay parser waits for the game, so the shortcut keeps its id once installed",
+    async () => {
+      const upc =
+        "C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\upc.exe";
+      storage.saveSession("ubisoft", { accountName: null, data: {} }, host);
+      library("ubisoft", [ownedGame("ubisoft", "5408", "RabbidsCoding")]);
+      setStoreAccountEnvironment({
+        launchers: () => ({ ...windows, ubisoft: upc }),
+        installed: async () => [],
+      });
+      const parsers = parsersStore();
+      const owned = config(
+        { storeAccount: "ubisoft" },
+        { configTitle: "Ubisoft owned", parserId: "owned-ubisoft" },
+      );
+      const fileOf = async () =>
+        (await parsers.executeFileParserReusing(owned)).parsedData
+          .parsedConfigs[0].files[0];
+      const uplay = (inputs: object, extra: object = {}) =>
+        makeConfig({
+          parserType: "UPlay",
+          configTitle: "Ubisoft Connect",
+          parserId: "uplay",
+          parserInputs: { uplayLauncherMode: true, ...inputs },
+          ...extra,
+        });
+
+      // The UPlay parser launches through Ubisoft Connect: PowerShell.
+      parsers.add(uplay({ uplayWaitForExit: false }));
+      const plain = await fileOf();
+      expect(plain.modifiedExecutableLocation).toBe(`"${POWERSHELL_EXE}"`);
+      expect(plain.launchWrapper).toBeUndefined();
+
+      // It waits for the game: its shortcuts run SRM's launch script, and so
+      // does this one, around the same install link, waiting for nothing.
+      parsers.add(uplay({ uplayWaitForExit: true }, { parserId: "uplay-2" }));
+      const wrapped = await fileOf();
+      expect(wrapped.modifiedExecutableLocation).toBe(wrapperExecutable());
+      expect(wrapped.launchWrapper).toEqual({
+        target: `"${POWERSHELL_EXE}"`,
+        noWait: true,
+        preLaunch: [],
+        postLaunch: [],
+        postExit: [],
+      });
+      expect(wrapped.argumentString).toContain('\\"uplay://install/5408\\"');
+      // The UPlay parser's shortcut of the installed game has the same
+      // program and title: the same Steam shortcut.
+      expect(
+        generateShortAppId(
+          wrapped.modifiedExecutableLocation,
+          wrapped.titles.final,
+        ),
+      ).toBe(generateShortAppId(wrapperExecutable(), "RabbidsCoding"));
+    },
+  );
+
+  it("goes through SRM's launch script where the store's launcher parser has the user's script wrapper; Heroic shortcuts don't", async () => {
+    const parsers = parsersStore();
+    const owned = config({}, { configTitle: "GOG owned", parserId: "o-gog" });
+    parsers.add(
+      makeConfig({
+        parserType: "GOG Galaxy",
+        configTitle: "GOG Galaxy",
+        parserId: "galaxy",
+        parserInputs: { gogLauncherMode: true },
+        scriptWrapper: {
+          enabled: true,
+          preLaunch: { script: "", delay: 0 },
+          postLaunch: { script: "", delay: 0 },
+          postExit: { script: "", delay: 0 },
+        },
+      }),
+    );
+    const files = (await parsers.executeFileParserReusing(owned)).parsedData
+      .parsedConfigs[0].files;
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(file.modifiedExecutableLocation).toBe(wrapperExecutable());
+      expect(file.launchWrapper).toMatchObject({
+        target: `"${GALAXY_EXE}"`,
+        noWait: true,
+      });
+    }
+    // Heroic (Linux) starts the game itself once it has installed it: its
+    // shortcut stays as it is.
+    setStoreAccountEnvironment({
+      launchers: () => steamDeck,
+      installed: async () => [],
+    });
+    const deck = (await parsers.executeFileParserReusing(owned)).parsedData
+      .parsedConfigs[0].files;
+    expect(deck.length).toBeGreaterThan(0);
+    for (const file of deck) {
+      expect(file.argumentString).toContain("heroic://launch/gog/");
+      expect(file.launchWrapper).toBeUndefined();
+    }
   });
 
   it("with the options off, only the same store's installed game is left out", async () => {
@@ -852,6 +958,65 @@ describe("Store Account parser (characterization)", () => {
     // (a parser's folder changing is a change: parsed again)
     const after = await parsers.executeFileParserReusing(owned);
     expect(titles(after.parsedData)).toEqual(["Shadwen demo"]);
+  });
+});
+
+describe("wrappingLaunchersOf", () => {
+  const parser = (parserType: string, extra: object = {}) =>
+    makeConfig({ parserType, configTitle: parserType, ...extra });
+  const wrapper = {
+    scriptWrapper: {
+      enabled: true,
+      preLaunch: { script: "", delay: 0 },
+      postLaunch: { script: "", delay: 0 },
+      postExit: { script: "", delay: 0 },
+    },
+  };
+
+  it("names the stores whose enabled launcher parser runs its games through SRM's launch script", () => {
+    const configs = [
+      // waits for the game (launching via the launcher)
+      parser("UPlay", {
+        parserInputs: { uplayLauncherMode: true, uplayWaitForExit: true },
+      }),
+      parser("EA Desktop", {
+        parserInputs: { eaLauncherMode: true, eaWaitForExit: true },
+      }),
+      // (waiting needs launcher mode)
+      parser("Epic", {
+        parserInputs: { epicLauncherMode: false, epicWaitForExit: true },
+      }),
+      // Battle.net's always do
+      parser("Battle.net"),
+      // the user's script wrapper
+      parser("itch.io", wrapper),
+      // disabled: adds no shortcut
+      parser("GOG Galaxy", { ...wrapper, disabled: true }),
+      parser("Amazon Games"),
+      // (not a launcher parser of a store)
+      parser("Glob", wrapper),
+    ];
+    expect(wrappingLaunchersOf(configs, "Windows_NT")).toEqual([
+      "ea",
+      "battlenet",
+      "itch",
+      "ubisoft",
+    ]);
+    // Waiting for the game is Windows-only; the user's wrapper isn't.
+    expect(wrappingLaunchersOf(configs, "Linux")).toEqual(["itch"]);
+    // One of a store's parsers is enough.
+    expect(
+      wrappingLaunchersOf(
+        [
+          parser("Epic", { parserInputs: { epicLauncherMode: true } }),
+          parser("Epic", {
+            parserInputs: { epicLauncherMode: true, epicWaitForExit: true },
+          }),
+        ],
+        "Windows_NT",
+      ),
+    ).toEqual(["epic"]);
+    expect(wrappingLaunchersOf([], "Windows_NT")).toEqual([]);
   });
 });
 

@@ -198,7 +198,12 @@ Try {
     }
 
     $running = $False
-    If (!$startFailed -and $Config.game -and $Config.game.folder) {
+    If ($Config.noWait) {
+        # (the launch only opened something, such as a launcher's install
+        # dialog: no game runs, and the started process may be the launcher
+        # itself, which stays open)
+        If (!$startFailed) { Write-Log "opened; no game to wait for" }
+    } ElseIf (!$startFailed -and $Config.game -and $Config.game.folder) {
         # The launcher was started and starts the game: wait for it (3
         # minutes at most, or what the parser sets: a launcher may update the
         # game or ask to sign in first) and for its start-up to settle: the
@@ -256,7 +261,7 @@ Try {
         Invoke-Stage "post-launch" $Config.postLaunch
         Wait-GameExit
         Write-Log "game exited"
-    } Else {
+    } ElseIf (!$Config.noWait) {
         Write-Log "the game didn't start; skipping post-launch scripts"
     }
     Invoke-Stage "post-exit" $Config.postExit

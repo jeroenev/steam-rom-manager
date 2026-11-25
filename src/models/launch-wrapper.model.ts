@@ -47,6 +47,11 @@ export interface ParserLaunchWrapper {
     startTimeoutMinutes?: number;
     handOff?: string[];
   };
+  // The launch only opens something and starts no game (a launcher's
+  // install dialog for a game that isn't installed): nothing is waited for,
+  // not even the started process, which may be the launcher itself and stay
+  // open. Post-launch scripts are skipped; post-exit ones run right away.
+  noWait?: boolean;
   preLaunch?: LaunchScript[];
   postLaunch?: LaunchScript[];
   postExit?: LaunchScript[];
@@ -59,6 +64,7 @@ export interface LaunchWrapper {
   target: string;
   launch?: ParserLaunchWrapper["launch"];
   game?: ParserLaunchWrapper["game"];
+  noWait?: boolean;
   preLaunch: LaunchScript[];
   postLaunch: LaunchScript[];
   postExit: LaunchScript[];
