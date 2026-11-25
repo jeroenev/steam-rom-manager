@@ -39,6 +39,23 @@ describe("sgdbPlatformIdOf", () => {
     ).toBeUndefined();
   });
 
+  it("Ubisoft Connect by space_id; an old game without one has its title searched", () => {
+    expect(
+      sgdbPlatformIdOf(
+        ownedGame("ubisoft", "3279", "STEEP", {
+          space_id: "11111111-2222-3333-4444-555555555555",
+          partner: "epic",
+        }),
+      ),
+    ).toEqual({
+      platform: "uplay",
+      id: "11111111-2222-3333-4444-555555555555",
+    });
+    expect(
+      sgdbPlatformIdOf(ownedGame("ubisoft", "80", "Rayman Origins")),
+    ).toBeUndefined();
+  });
+
   it("GOG, Amazon, Humble and itch.io: SteamGridDB has no such platform", () => {
     for (const store of ["gog", "amazon", "humble", "itch"] as const) {
       expect(sgdbPlatformIdOf(ownedGame(store, "1", "A Game"))).toBeUndefined();

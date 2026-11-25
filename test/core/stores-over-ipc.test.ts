@@ -21,6 +21,7 @@ import {
   unregisterStoreClient,
 } from "../../src/lib/stores/registry";
 import { STORE_KEYS } from "../../src/lib/stores/types";
+import { setUbisoftEnvironment } from "../../src/lib/stores/ubisoft";
 import {
   StoreAccountParser,
   setStoreAccountEnvironment,
@@ -312,7 +313,12 @@ describe("store accounts over IPC", () => {
       battlenet: { window: true, paste: false },
       humble: { window: true, paste: true },
       itch: { window: false, paste: true },
+      ubisoft: { window: false, paste: false },
     });
+    // Ubisoft Connect is read on this PC instead; no other store is.
+    expect(STORE_KEYS.filter((store) => service.status(store).local)).toEqual([
+      "ubisoft",
+    ]);
     // The instructions come in the UI's language (langStrings only), one
     // set per store that signs in by a paste.
     for (const store of STORE_KEYS.filter((key) => ways[key].paste)) {
@@ -322,6 +328,27 @@ describe("store accounts over IPC", () => {
     }
     expect(service.status("humble").paste?.instructions).toContain(
       "Cookie request header",
+    );
+  });
+
+  it("Ubisoft Connect: uses the launcher on this PC; other stores can't", async () => {
+    const { service } = await makeService();
+    setUbisoftEnvironment({ osType: "Linux", dataDir: undefined });
+    try {
+      await expect(service.loginLocally("ubisoft")).rejects.toThrow(
+        "can only be read on Windows",
+      );
+      expect(service.status("ubisoft")).toMatchObject({
+        signedIn: false,
+        local: true,
+        windowLogin: false,
+        paste: null,
+      });
+    } finally {
+      setUbisoftEnvironment();
+    }
+    await expect(service.loginLocally("itch")).rejects.toThrow(
+      "itch.io can't be used from this PC's launcher",
     );
   });
 

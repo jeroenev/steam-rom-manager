@@ -124,6 +124,7 @@ export const rpcApi = {
       "loginWithWindow",
       "openSignInPage",
       "submitPaste",
+      "loginLocally",
       "refresh",
       "signOut",
     ],

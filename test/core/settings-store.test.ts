@@ -82,6 +82,7 @@ describe("SettingsStore", () => {
           "amazon",
           "ea",
           "battlenet",
+          "ubisoft",
           "humble",
           "itch",
         ],
@@ -92,7 +93,7 @@ describe("SettingsStore", () => {
       expect(settings.ownedGames).toEqual(DEFAULT_OWNED_GAMES);
       // (a copy: changing the settings leaves the defaults alone)
       settings.ownedGames.storeOrder.push("epic");
-      expect(DEFAULT_OWNED_GAMES.storeOrder).toHaveLength(7);
+      expect(DEFAULT_OWNED_GAMES.storeOrder).toHaveLength(8);
     });
 
     it("settings from before them (version 11) get the defaults, and keep the rest", async () => {

@@ -16,7 +16,7 @@ export interface ProviderInputField {
 
 // A store SteamGridDB knows games by their id at (a platform of its API:
 // /games/<platform>/<id>), among those whose games SRM has store ids of.
-export type SgdbPlatform = "egs" | "origin" | "bnet";
+export type SgdbPlatform = "egs" | "origin" | "bnet" | "uplay";
 
 // A game's id at one of those stores. The artwork providers look the game
 // up by it before they search SteamGridDB for its title: an id names the

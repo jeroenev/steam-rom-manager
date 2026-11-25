@@ -6,11 +6,12 @@
 //
 // A Steam shortcut's id comes from its program and its title. So where SRM
 // has a launcher-mode parser for the store, the shortcut uses that parser's
-// program (PowerShell for Epic and EA, GalaxyClient.exe, Amazon Games.exe,
-// Battle.net.exe): once the game is installed and that parser lists it
-// under the same title, the shortcut keeps its id, and with it its artwork
-// and exceptions. (Not for an EA Desktop parser that waits for the game to
-// exit: its shortcuts run SRM's launch script, lib/launch-wrapper.)
+// program (PowerShell for Epic, EA and Ubisoft Connect, GalaxyClient.exe,
+// Amazon Games.exe, Battle.net.exe): once the game is installed and that
+// parser lists it under the same title, the shortcut keeps its id, and with
+// it its artwork and exceptions. (Not for an EA Desktop or UPlay parser that
+// waits for the game to exit: its shortcuts run SRM's launch script,
+// lib/launch-wrapper.)
 
 import * as fs from "fs";
 import * as os from "os";
@@ -60,14 +61,15 @@ export interface Launchers {
   osType: string;
   // Each store's launcher, where it's installed: the program a shortcut
   // starts (GOG, Amazon, Battle.net) or only a sign that the store's link
-  // will work (Epic and EA go through PowerShell, the itch app through
-  // the opener).
+  // will work (Epic, EA and Ubisoft Connect go through PowerShell, the itch
+  // app through the opener).
   epic?: string;
   galaxy?: string;
   amazon?: string;
   ea?: string;
   battlenet?: string;
   itch?: string;
+  ubisoft?: string;
   // PowerShell as the EA Desktop parser runs it (where Windows is; Epic's
   // parser always uses POWERSHELL_EXE). Unset: POWERSHELL_EXE.
   powershell?: string;
@@ -172,6 +174,14 @@ export function detectLaunchers(env: DetectEnv = systemDetectEnv()): Launchers {
         ),
       ]),
       itch: first(under(["LOCALAPPDATA"], "itch", "itch.exe")),
+      ubisoft: first(
+        under(
+          ["ProgramFiles(x86)", "ProgramFiles"],
+          "Ubisoft",
+          "Ubisoft Game Launcher",
+          "upc.exe",
+        ),
+      ),
       powershell: powershellPath(env.env.SystemRoot),
       heroicStores: [],
       opener: explorerPath(env.env.SystemRoot),
@@ -342,9 +352,24 @@ function launcherTarget(
             via: "launcher",
           }
         : undefined;
+    case "ubisoft":
+      // (the UPlay parser's PowerShell in launcher mode, which doesn't
+      // follow SystemRoot)
+      return launchers.ubisoft && DIGITS.test(game.id)
+        ? inLauncher(POWERSHELL_EXE, powershellOpen(ubisoftInstallLink(game)))
+        : undefined;
     case "humble":
       return undefined;
   }
+}
+
+// Ubisoft Connect's install link (Playnite's, GOG Galaxy's and Lutris's).
+// It opens Ubisoft Connect's install dialog, whether Ubisoft Connect was
+// running or not, also for a game linked to an Epic account (checked with
+// Ubisoft Connect 175, 2026-11). Only while it's online: in offline mode it
+// answers "Unable to start download (Code: 17003)".
+export function ubisoftInstallLink(game: OwnedGame) {
+  return `uplay://install/${game.id}`;
 }
 
 // Playnite's launch link, the one the Epic parser uses (with the game's
@@ -447,6 +472,8 @@ export function storePage(game: OwnedGame): string {
       return "https://www.ea.com/ea-app";
     case "battlenet":
       return "https://download.battle.net/";
+    case "ubisoft":
+      return "https://ubisoftconnect.com/";
     case "humble":
       return "https://www.humblebundle.com/home/library";
     case "itch":

@@ -57,7 +57,7 @@ function fakeClient(
   list: (
     session: StoreSession,
     ctx: ListContext,
-  ) => Promise<{ games: any[]; partial?: boolean }>,
+  ) => Promise<{ games: any[]; partial?: boolean; fetchedAt?: number }>,
   extra: Partial<StoreClient> = {},
 ): StoreClient {
   return {
@@ -144,10 +144,27 @@ describe("store accounts", () => {
       "battlenet",
       "humble",
       "itch",
+      "ubisoft",
     ]);
     expect(isStoreKey("battlenet")).toBe(true);
     expect(isStoreKey("battle_net")).toBe(false);
     expect(refresh.accountStatus("battlenet").store).toBe("battlenet");
+  });
+
+  it("a list's own date (a launcher's cache) is the library's, never one after now", async () => {
+    refresh.setStoreClock(() => 5000);
+    let fetchedAt: number | undefined = 2000;
+    registerStoreClient(
+      fakeClient("epic", async () => ({ ...games(2), fetchedAt })),
+    );
+    await refresh.completeLogin(refresh.pendingLogin("epic"), {
+      pasted: "token",
+    });
+    expect((await refresh.refreshLibrary("epic")).fetchedAt).toBe(2000);
+    fetchedAt = 9000;
+    expect((await refresh.refreshLibrary("epic")).fetchedAt).toBe(5000);
+    fetchedAt = undefined;
+    expect((await refresh.refreshLibrary("epic")).fetchedAt).toBe(5000);
   });
 
   it("a sign-in keeps its state until it ends", async () => {

@@ -25,7 +25,9 @@ yarn typecheck
 
   On Windows, `$env:SRM_LIVE_UWP = 1` adds the UWP parser's PowerShell
   checks, and `$env:SRM_LIVE_EA = 1` the EA Desktop parser's registry lookup
-  (needs a game the EA app installed).
+  (needs a game the EA app installed). `$env:SRM_LIVE_UBISOFT = 1` lists the
+  games of the Ubisoft Connect signed in on this PC from its cache (it
+  prints titles and product ids, never the user id).
 
 Tests run in plain Node, not Electron. `setup.ts` swaps out the modules that
 need Electron or a browser (`src/variables`, `src/paths`, the image-provider

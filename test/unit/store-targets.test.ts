@@ -109,6 +109,34 @@ describe("install targets", () => {
     ).toContain("offerIds=OFB-EAST:52735");
   });
 
+  it("Ubisoft Connect installs through PowerShell, as the UPlay parser's launcher mode", () => {
+    const launchers = windows({
+      ubisoft:
+        "C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\upc.exe",
+      // (the UPlay parser always starts C:\WINDOWS's PowerShell)
+      powershell: "D:\\Win\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+    });
+    expect(installTarget(game("ubisoft", "5408"), "auto", launchers)).toEqual({
+      exe: POWERSHELL,
+      args: '-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"uplay://install/5408\\""',
+      startDir: "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0",
+      via: "launcher",
+    });
+    // Without Ubisoft Connect: its download page.
+    expect(installTarget(game("ubisoft", "5408"), "auto", windows())).toEqual({
+      exe: "C:\\WINDOWS\\explorer.exe",
+      args: '"https://ubisoftconnect.com/"',
+      startDir: "C:\\WINDOWS",
+      via: "browser",
+    });
+    // Only a product id (digits) goes into the link.
+    for (const id of ["46/0", "x$(calc)", ""]) {
+      expect(installTarget(game("ubisoft", id), "auto", launchers).via).toBe(
+        "browser",
+      );
+    }
+  });
+
   it("GOG, Amazon and Battle.net open their own launchers", () => {
     const launchers = windows({
       galaxy: "C:\\Program Files (x86)\\GOG Galaxy\\GalaxyClient.exe",
@@ -258,6 +286,7 @@ describe("install targets", () => {
           "C:\\Users\\A\\AppData\\Local\\Amazon Games\\App\\Amazon Games.exe",
           "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EADesktop.exe",
           "C:\\Program Files (x86)\\Battle.net\\Battle.net.exe",
+          "C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\upc.exe",
         ],
         WINDOWS_ENV,
       ),
@@ -273,6 +302,8 @@ describe("install targets", () => {
       ea: "C:\\Program Files\\Electronic Arts\\EA Desktop\\EA Desktop\\EADesktop.exe",
       battlenet: "C:\\Program Files (x86)\\Battle.net\\Battle.net.exe",
       itch: undefined,
+      ubisoft:
+        "C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\upc.exe",
       // (no SystemRoot: where SRM always had them)
       powershell: POWERSHELL,
       heroicStores: [],
@@ -465,6 +496,7 @@ describe("install targets", () => {
     expect(page(game("amazon", "1"))).toBe("https://gaming.amazon.com/home");
     expect(page(game("ea", "1"))).toBe("https://www.ea.com/ea-app");
     expect(page(game("battlenet", "1"))).toBe("https://download.battle.net/");
+    expect(page(game("ubisoft", "46"))).toBe("https://ubisoftconnect.com/");
     expect(page(game("humble", "1"))).toBe(
       "https://www.humblebundle.com/home/library",
     );

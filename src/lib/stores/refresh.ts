@@ -707,7 +707,13 @@ export interface RefreshRun {
   startedWith: StoreSession;
   // The session as the store module left it.
   session: StoreSession;
-  fetched: { games?: OwnedGame[]; error?: unknown; partial?: boolean };
+  fetched: {
+    games?: OwnedGame[];
+    error?: unknown;
+    partial?: boolean;
+    // (ListResult.fetchedAt)
+    fetchedAt?: number;
+  };
   asked: Asked;
   // Aborted when the deadline passed or the account was signed out of:
   // nothing but what the store renewed (tokens, cookies) is saved.
@@ -753,7 +759,11 @@ async function refreshLocked(
   };
   try {
     const result = await client.listLibrary(run.session, ctx);
-    run.fetched = { games: result.games, partial: !!result.partial };
+    run.fetched = {
+      games: result.games,
+      partial: !!result.partial,
+      fetchedAt: result.fetchedAt,
+    };
   } catch (err) {
     run.fetched = { error: err };
   }
@@ -811,7 +821,7 @@ export async function commitRefresh(
     }
     const library: OwnedLibrary = {
       accountName: run.session.accountName ?? null,
-      fetchedAt: clock(),
+      fetchedAt: Math.min(run.fetched.fetchedAt ?? clock(), clock()),
       games: unique,
       partial: !!run.fetched.partial,
     };

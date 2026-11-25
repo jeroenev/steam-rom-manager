@@ -37,6 +37,7 @@ import {
   readGogRegistryGames,
   readHeroicInstalled,
   readLegendaryInstalled,
+  readUbisoftInstalls,
 } from "../helpers/launchers";
 import { StoreKey } from "./types";
 
@@ -84,6 +85,8 @@ export interface InstalledOptions extends InstalledLocations {
   installLocations?: string[];
   battleNetProductDb?: string;
   itchAppDataDir?: string;
+  // Ubisoft Connect's installs (default: Windows' registry, on Windows).
+  ubisoftInstalls?: () => Promise<{ id: string; installDir: string }[]>;
 }
 
 // The installed games of `store`, from every place they can be installed.
@@ -189,6 +192,14 @@ export async function readInstalledGames(
         itchInstalled,
       );
       break;
+    case "ubisoft": {
+      const installs =
+        options.ubisoftInstalls ?? (onWindows ? readUbisoftInstalls : null);
+      if (installs) {
+        sources = [quietly(async () => ubisoftInstalled(await installs()))];
+      }
+      break;
+    }
     case "humble":
       // (Humble has no launcher)
       break;
@@ -277,6 +288,16 @@ export async function gogRegistryInstalled(): Promise<InstalledGame[]> {
     id: String(values.gameID ?? ""),
     title: values.gameName,
   }));
+}
+
+// Ubisoft Connect's installs (as the UPlay parser reads them): the product
+// id of each one with an install folder, which is the id the account lists.
+export function ubisoftInstalled(
+  installs: { id: string; installDir: string }[],
+): InstalledGame[] {
+  return installs
+    .filter((install) => install.installDir !== "")
+    .map((install) => ({ store: "ubisoft" as StoreKey, id: install.id }));
 }
 
 // The Amazon Games app's database (as the Amazon Games parser): the Id of

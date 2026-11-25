@@ -48,6 +48,10 @@ export class StoresService {
     return this.call("submitPaste", store, pasted);
   }
 
+  loginLocally(store: string): Promise<string> {
+    return this.call("loginLocally", store);
+  }
+
   refresh(store: string): Promise<string> {
     return this.call("refresh", store);
   }
