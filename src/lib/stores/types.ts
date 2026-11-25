@@ -16,7 +16,8 @@ export type StoreKey =
   | "ea"
   | "battlenet"
   | "humble"
-  | "itch";
+  | "itch"
+  | "ubisoft";
 
 export const STORE_KEYS: readonly StoreKey[] = [
   "epic",
@@ -26,6 +27,7 @@ export const STORE_KEYS: readonly StoreKey[] = [
   "battlenet",
   "humble",
   "itch",
+  "ubisoft",
 ];
 
 export const STORE_NAMES: Readonly<Record<StoreKey, string>> = {
@@ -36,6 +38,7 @@ export const STORE_NAMES: Readonly<Record<StoreKey, string>> = {
   battlenet: "Battle.net",
   humble: "Humble Bundle",
   itch: "itch.io",
+  ubisoft: "Ubisoft Connect",
 };
 
 export function isStoreKey(value: unknown): value is StoreKey {
@@ -44,13 +47,16 @@ export function isStoreKey(value: unknown): value is StoreKey {
 
 // The order of preference among stores when several own a game that isn't
 // installed (the "ownedGames" settings), when none is set: DRM-free first,
-// then the stores with the most complete launchers. (BoilR's too.)
+// then the stores with the most complete launchers. (BoilR's too.) Ubisoft
+// Connect comes after Epic: a Ubisoft game linked to an Epic account is in
+// both.
 export const DEFAULT_STORE_ORDER: readonly StoreKey[] = [
   "gog",
   "epic",
   "amazon",
   "ea",
   "battlenet",
+  "ubisoft",
   "humble",
   "itch",
 ];
@@ -76,7 +82,7 @@ export interface OwnedGame {
   // for that launcher) uses, so an owned game and its installed copy can be
   // matched: Epic appName, GOG product id, Amazon product id, EA offer id,
   // Battle.net launcher code, Humble subproduct id (the old machine_name
-  // where the site still sends one), itch game id.
+  // where the site still sends one), itch game id, Ubisoft product id.
   id: string;
   title: string;
   // What the install target needs besides the id; the keys are listed in
@@ -133,9 +139,11 @@ export interface SavedCookie {
 }
 
 // How a login can be finished without SRM's login window: the user signs
-// in with their own browser and pastes one value back.
+// in with their own browser and pastes one value back; or ("local") SRM
+// reads the store's launcher on this PC, which is signed in already.
 export type ManualLogin =
   | { kind: "unsupported" }
+  | { kind: "local" }
   | {
       kind: "paste";
       // The page to open in the browser. (What to paste, in the UI's
@@ -239,6 +247,9 @@ export interface ListResult {
   games: OwnedGame[];
   // See OwnedLibrary.partial.
   partial?: boolean;
+  // When the store's list was made, when that was before now: a store read
+  // from its launcher's cache gives the cache's date.
+  fetchedAt?: number;
 }
 
 // What every store's module implements. Modules are stateless: everything

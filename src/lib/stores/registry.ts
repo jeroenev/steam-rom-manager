@@ -9,6 +9,7 @@ import { gogClient } from "./gog";
 import { humbleClient } from "./humble";
 import { itchClient } from "./itch";
 import { StoreClient, StoreKey } from "./types";
+import { ubisoftClient } from "./ubisoft";
 
 const clients = new Map<StoreKey, StoreClient>();
 
@@ -32,3 +33,4 @@ registerStoreClient(eaClient);
 registerStoreClient(battlenetClient);
 registerStoreClient(humbleClient);
 registerStoreClient(itchClient);
+registerStoreClient(ubisoftClient);

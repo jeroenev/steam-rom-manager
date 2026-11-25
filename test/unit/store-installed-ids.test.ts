@@ -291,6 +291,33 @@ describe("installed store ids", () => {
     ]);
   });
 
+  it("Ubisoft Connect: the product id of each install with a folder", async () => {
+    expect(
+      await installed.readInstalledGames("ubisoft", {
+        ...nowhere,
+        ubisoftInstalls: async () => [
+          { id: "46", installDir: "C:/Games/Far Cry 3/" },
+          { id: "273", installDir: "D:/Ubisoft/AC4/" },
+          { id: "80", installDir: "" },
+        ],
+      }),
+    ).toEqual([
+      { store: "ubisoft", id: "46" },
+      { store: "ubisoft", id: "273" },
+    ]);
+    // Windows' registry, which can't be read: none.
+    expect(
+      await installed.readInstalledGames("ubisoft", {
+        ...nowhere,
+        ubisoftInstalls: async () => {
+          throw new Error("The system was unable to find the specified key");
+        },
+      }),
+    ).toEqual([]);
+    // (elsewhere than Windows, the registry isn't read)
+    expect(await installed.readInstalledGames("ubisoft", nowhere)).toEqual([]);
+  });
+
   it("itch: the game of each install in the itch app's database", async () => {
     makeDb(
       "itch/db/butler.db",

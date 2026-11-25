@@ -406,6 +406,8 @@
       "notSignedIn": "Not signed in.",
       "signedIn": "Signed in.",
       "signedInAs__i": "Signed in as ${name}.",
+      "usingLocal__i": "Using ${store} on this PC.",
+      "local__i": "SRM reads the games of the account ${store} is signed in to on this PC, from the list ${store} keeps on disk; nothing is sent to the store. Start ${store} and sign in first. A game you buy shows up once ${store} has run again; \"fetched\" is when ${store} last saved its list.",
       "games__i": "Games owned: ${count} (fetched ${when}).",
       "notFetched": "Its games haven't been fetched yet.",
       "partial": "Some games couldn't be looked up; they are fetched again soon.",
@@ -419,6 +421,7 @@
       "buttons": {
         "signIn": "Sign in",
         "signInWithBrowser": "Sign in with your browser",
+        "useLocal__i": "Use ${store} on this PC",
         "openSignInPage": "Open the sign-in page again",
         "refresh": "Refresh library",
         "signOut": "Sign out",
@@ -436,7 +439,8 @@
       "signedOut__i": "Signed out of ${store}.",
       "noLoginWindow__i": "${store} signs in through your browser only.",
       "noLoginWindowHere": "This SRM can't open a sign-in window.",
-      "noBrowserLogin__i": "${store} signs in with SRM's sign-in window only."
+      "noBrowserLogin__i": "${store} signs in with SRM's sign-in window only.",
+      "noLocalLogin__i": "${store} can't be used from this PC's launcher: sign in to it instead."
     },
     "paste": {
       "instructions": {

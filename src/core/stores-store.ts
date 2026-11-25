@@ -39,6 +39,9 @@ export interface StoreAccountView extends Omit<AccountStatus, "manual"> {
   // How to sign in with the user's browser (in the UI's language), or null
   // when the store has no such way.
   paste: PasteLogin | null;
+  // The store "signs in" by reading its launcher on this PC, which is
+  // signed in already (Ubisoft Connect): loginLocally.
+  local: boolean;
   // Sign-ins aren't safe at rest here (Linux without a keyring).
   secretsWarning: boolean;
 }
@@ -107,6 +110,7 @@ export class StoresStore {
       windowLogin:
         status.available && status.webviewLogin && !!host.openLoginWindow,
       paste: status.available ? this.pasteLogin(key, manual) : null,
+      local: status.available && manual.kind === "local",
       secretsWarning,
     };
   }
@@ -215,6 +219,20 @@ export class StoresStore {
     const name = await completeLogin(pending, {
       pasted: String(pasted ?? "").trim(),
     });
+    return this.afterSignIn(key, name);
+  }
+
+  // Signs in with the account the store's launcher on this PC is signed in
+  // to (Ubisoft Connect), then fetches the games.
+  async loginLocally(store: string): Promise<string> {
+    const key = this.key(store);
+    const pending = pendingLogin(key);
+    if (pending.manual.kind !== "local") {
+      throw new Error(
+        this.lang.noLocalLogin__i.interpolate({ store: STORE_NAMES[key] }),
+      );
+    }
+    const name = await completeLogin(pending, {});
     return this.afterSignIn(key, name);
   }
 

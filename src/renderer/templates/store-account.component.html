@@ -13,7 +13,9 @@
         {{
           status.accountName
             ? lang.signedInAs__i.interpolate({ name: status.accountName })
-            : lang.signedIn
+            : status.local
+              ? lang.usingLocal__i.interpolate({ store: status.name })
+              : lang.signedIn
         }}
         {{
           status.gameCount !== null
@@ -44,10 +46,24 @@
     @if (!status.canRefresh) {
       <p class="note">{{ lang.readOnly }}</p>
     }
+    @if (status.local) {
+      <p class="note">
+        {{ lang.local__i.interpolate({ store: status.name }) }}
+      </p>
+    }
     <div class="clickButtons">
       @if (status.windowLogin) {
         <div class="clickButton" [class.disabled]="busy" (click)="signIn()">
           {{ lang.buttons.signIn }}
+        </div>
+      }
+      @if (status.local && status.canRefresh) {
+        <div
+          class="clickButton"
+          [class.disabled]="busy"
+          (click)="signInLocally()"
+        >
+          {{ lang.buttons.useLocal__i.interpolate({ store: status.name }) }}
         </div>
       }
       @if (status.paste && status.canRefresh) {

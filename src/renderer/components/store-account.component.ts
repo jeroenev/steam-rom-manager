@@ -14,7 +14,8 @@ import { APP } from "../../variables";
 // A store account in the parser editor (a Store Account parser's "account"
 // input): who is signed in, how many games the account owns and when they
 // were fetched, what went wrong last; and sign in, sign in with the
-// browser (then paste what the store shows), refresh, sign out. It follows
+// browser (then paste what the store shows) or use the store's launcher on
+// this PC, refresh, sign out. It follows
 // the account as it changes (a refresh in the background, another parser
 // of the same store).
 @Component({
@@ -67,6 +68,11 @@ export class StoreAccountComponent implements OnChanges, OnDestroy {
 
   signIn() {
     this.run(() => this.stores.loginWithWindow(this.store));
+  }
+
+  // Uses the account the store's launcher on this PC is signed in to.
+  signInLocally() {
+    this.run(() => this.stores.loginLocally(this.store));
   }
 
   // Opens the sign-in page in the browser and the box for what the store

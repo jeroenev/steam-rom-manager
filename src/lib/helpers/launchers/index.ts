@@ -10,3 +10,4 @@ export * from "./amazon-games";
 export * from "./battle-net";
 export * from "./itch";
 export * from "./heroic";
+export * from "./ubisoft";

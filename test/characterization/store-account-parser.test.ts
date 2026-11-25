@@ -329,12 +329,20 @@ describe("Store Account parser (characterization)", () => {
           url: "https://www.humblebundle.com/home/library/owlboy",
         }),
       ],
+      ubisoft: [
+        ownedGame("ubisoft", "5408", "Rabbids Coding!", {
+          space_id: "11111111-2222-3333-4444-555555555555",
+        }),
+        // Installed: Ubisoft Connect's registry key lists it.
+        ownedGame("ubisoft", "46", "Far Cry 3"),
+      ],
     };
     const installedHere: Partial<Record<StoreKey, InstalledGame[]>> = {
       epic: [{ store: "epic", id: "Sugar" }],
       amazon: [{ store: "amazon", id: "amzn1.adg.product.2" }],
       ea: [{ store: "ea", id: "71512" }],
       battlenet: [{ store: "battlenet", id: "w3" }],
+      ubisoft: [{ store: "ubisoft", id: "46" }],
     };
     setStoreAccountEnvironment({
       launchers: () => ({
@@ -343,6 +351,8 @@ describe("Store Account parser (characterization)", () => {
         amazon: amazonExe,
         ea: eaExe,
         battlenet: DEFAULT_BATTLE_NET_EXE,
+        ubisoft:
+          "C:\\Program Files (x86)\\Ubisoft\\Ubisoft Game Launcher\\upc.exe",
       }),
       installed: async (store) => installedHere[store] ?? [],
     });
@@ -372,8 +382,16 @@ describe("Store Account parser (characterization)", () => {
       "Dead Space",
       "Fallout: New Vegas Ultimate Edition",
       "Owlboy",
+      "Rabbids Coding!",
       "Warcraft III: Reign of Chaos",
       "World of Warcraft",
+    ]);
+    // (the UPlay parser's program in launcher mode: the same shortcut once
+    // it lists the game under this title)
+    expect(shortcuts["Rabbids Coding!"]).toEqual([
+      POWERSHELL_EXE,
+      '-windowStyle hidden -NoProfile -ExecutionPolicy Bypass -Command "&Start-Process \\"uplay://install/5408\\""',
+      powershell,
     ]);
     expect(shortcuts["Control"][0]).toBe(POWERSHELL_EXE);
     expect(shortcuts["Control"][1]).toContain(
@@ -425,6 +443,13 @@ describe("Store Account parser (characterization)", () => {
         }),
         ownedGame("battlenet", "W3C", "Warcraft III: Reign of Chaos"),
       ],
+      ubisoft: [
+        ownedGame("ubisoft", "3279", "STEEP", {
+          space_id: "11111111-2222-3333-4444-555555555555",
+          partner: "epic",
+        }),
+        ownedGame("ubisoft", "80", "Rayman Origins"),
+      ],
     };
     for (const [store, games] of Object.entries(owned)) {
       storage.saveSession(
@@ -475,6 +500,11 @@ describe("Store Account parser (characterization)", () => {
       "Zuma's Revenge!": { platform: "origin", id: "OFB-EAST:52735" },
       "Overwatch 2": { platform: "bnet", id: "prometheus" },
       "Warcraft III: Reign of Chaos": null,
+      STEEP: {
+        platform: "uplay",
+        id: "11111111-2222-3333-4444-555555555555",
+      },
+      "Rayman Origins": null,
     });
     const control = files.find((f) => f.titles.final === "Control");
     expect(control.onlineImageQueries).toEqual(["Control Ultimate Edition"]);
