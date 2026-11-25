@@ -15,3 +15,4 @@ export * from "./ea-desktop.parser";
 export * from "./battle-net.parser";
 export * from "./github-launcher.parser";
 export * from "./quiver-launcher.parser";
+export { StoreAccountParser } from "./store-account.parser";

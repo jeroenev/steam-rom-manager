@@ -141,6 +141,25 @@
 
         grid-area: button;
       }
+
+      .numberInput {
+        width: 8em;
+      }
+
+      // The stores, in the order of preference, each with Up and Down.
+      .storeOrder {
+        margin: 0.1em 0;
+        .storeName {
+          width: 12em;
+        }
+        .clickButton2 {
+          @include clickButtonColor(click-button, true);
+          margin-bottom: 0;
+          &.disabled {
+            pointer-events: none;
+          }
+        }
+      }
     }
   }
 

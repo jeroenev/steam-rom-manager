@@ -1,0 +1,111 @@
+@if (!store) {
+  <p class="note">{{ lang.chooseStore }}</p>
+} @else if (status) {
+  @if (!status.available) {
+    <p class="note">
+      {{ lang.unavailable__i.interpolate({ store: status.name }) }}
+    </p>
+  } @else {
+    <p class="state">
+      @if (!status.signedIn) {
+        {{ lang.notSignedIn }}
+      } @else {
+        {{
+          status.accountName
+            ? lang.signedInAs__i.interpolate({ name: status.accountName })
+            : lang.signedIn
+        }}
+        {{
+          status.gameCount !== null
+            ? lang.games__i.interpolate({
+                count: status.gameCount,
+                when: fetchedWhen(status.fetchedAt),
+              })
+            : lang.notFetched
+        }}
+      }
+    </p>
+    @if (status.refreshing) {
+      <p class="note">{{ lang.refreshing }}</p>
+    }
+    @if (status.signedIn && status.partial) {
+      <p class="note">{{ lang.partial }}</p>
+    }
+    @if (status.needsSignIn) {
+      <p class="problem">{{ lang.needsSignIn }}</p>
+    } @else if (status.lastError) {
+      <p class="problem">
+        {{ lang.lastError__i.interpolate({ error: status.lastError }) }}
+      </p>
+    }
+    @if (status.secretsWarning) {
+      <p class="warning">{{ lang.secretsWarning }}</p>
+    }
+    @if (!status.canRefresh) {
+      <p class="note">{{ lang.readOnly }}</p>
+    }
+    <div class="clickButtons">
+      @if (status.windowLogin) {
+        <div class="clickButton" [class.disabled]="busy" (click)="signIn()">
+          {{ lang.buttons.signIn }}
+        </div>
+      }
+      @if (status.paste && status.canRefresh) {
+        <div
+          class="clickButton"
+          [class.disabled]="busy"
+          (click)="signInWithBrowser()"
+        >
+          {{ lang.buttons.signInWithBrowser }}
+        </div>
+      }
+      @if (status.signedIn && status.canRefresh) {
+        <div class="clickButton" [class.disabled]="busy" (click)="refresh()">
+          {{ lang.buttons.refresh }}
+        </div>
+      }
+      @if (status.signedIn) {
+        <div class="clickButton" [class.disabled]="busy" (click)="signOut()">
+          {{ lang.buttons.signOut }}
+        </div>
+      }
+    </div>
+    @if (paste) {
+      <div class="paste">
+        <label>{{ lang.pasteHeading }}</label>
+        <p class="note">{{ paste.instructions }}</p>
+        <ng-text-input
+          [(ngModel)]="pasted"
+          [placeholder]="paste.placeholder"
+        ></ng-text-input>
+        <div class="clickButtons">
+          <div
+            class="clickButton"
+            [class.disabled]="busy || !pasted.trim()"
+            (click)="submitPaste()"
+          >
+            {{ lang.buttons.submit }}
+          </div>
+          <div
+            class="clickButton"
+            [class.disabled]="busy"
+            (click)="openSignInPage()"
+          >
+            {{ lang.buttons.openSignInPage }}
+          </div>
+          <div class="clickButton" (click)="cancelPaste()">
+            {{ lang.buttons.cancel }}
+          </div>
+        </div>
+      </div>
+    }
+    @if (busy) {
+      <p class="note">{{ lang.working }}</p>
+    }
+  }
+}
+@if (message) {
+  <p [class.problem]="message.error" [class.result]="!message.error">
+    {{ message.text }}
+  </p>
+}

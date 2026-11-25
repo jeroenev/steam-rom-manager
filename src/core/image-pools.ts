@@ -55,6 +55,7 @@ export function keepRetrievedPools(
       Object.entries(pool.online).map(([provider, x]) => [
         provider,
         x.searchQueries,
+        x.platformIds ?? [],
         x.imageProviderAPIs,
       ]),
     ]);

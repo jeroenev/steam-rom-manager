@@ -3,6 +3,8 @@ import { Controllers } from "./controllers.model";
 import { ImageProviderAPI } from "./user-configuration.model";
 import { OnlineProviderType, ArtworkType, SelectItem } from ".";
 import { LaunchWrapper, ParserLaunchWrapper } from "./launch-wrapper.model";
+import type { StoreKey } from "../lib/stores/types";
+import type { SgdbPlatformId } from "./image-providers.model";
 
 export interface StringMap {
   [key: string]: any;
@@ -19,23 +21,22 @@ export interface StringMap {
 */
 
 export const TITLE_MODIFIER_KEYS = [
-  "extracted", 
+  "extracted",
   "postShortcutPassthrough",
   "postCustomVariables",
   "postFuzzy",
   "postTitleModifier",
-  "final"
+  "final",
 ] as const; // ordered title waterfall
-export type TitleModifierKey = typeof TITLE_MODIFIER_KEYS[number];
+export type TitleModifierKey = (typeof TITLE_MODIFIER_KEYS)[number];
 export type TitleModifiers = Record<TitleModifierKey, string | null>;
-
 
 export interface ParsedUserConfigurationFile {
   executableLocation: string;
   modifiedExecutableLocation: string;
   startInDirectory: string;
   filePath: string;
-  titles: TitleModifiers
+  titles: TitleModifiers;
   sortAsTitle: string; // not actually part of the title waterfall
   argumentString: string;
   // Resolved Steam Play compat tool for this specific file. Seeded from the
@@ -44,6 +45,9 @@ export interface ParsedUserConfigurationFile {
   compatToolName: string;
   appendArgsToExecutable: boolean;
   onlineImageQueries: string[];
+  // The game's id at a store SteamGridDB knows (ParsedSuccess); dropped when
+  // an exception sets the game's artwork search.
+  sgdbPlatformId?: SgdbPlatformId;
   steamCategories: string[];
   imagePool: string;
   defaultImage: Record<ArtworkType, string>;
@@ -76,6 +80,10 @@ export interface ParsedUserConfiguration {
   failed: string[];
   // Games left out by an exclusion (see models/user-exceptions.model.ts).
   excluded: { exclusionId: string; title: string; filePath: string }[];
+  // A Store Account parser's: the store whose account it lists.
+  store?: StoreKey;
+  // ParsedData.skipped
+  skipped?: string;
 }
 const inputTypes = StringLiteralArray([
   "text",
@@ -84,19 +92,32 @@ const inputTypes = StringLiteralArray([
   "toggle",
   "select",
   "multiselect",
+  // Not a setting: the sign-in and library of the store account a Store
+  // Account parser lists, shown in the parser editor. Never saved with the
+  // parser (userConfigurations.json goes into bug reports), so it's left
+  // out of availableParserInputs and the schema.
+  "account",
 ]);
 export type ParserInputType = (typeof inputTypes)[number];
+
+// Whether an input of this type is part of the parser's settings.
+export function isSavedInput(inputType: ParserInputType) {
+  return inputType !== "account";
+}
+
 export interface ParserInputField {
   [inputKey: string]: {
     label: string;
     placeholder?: string;
     inputType: ParserInputType;
     allowedValues?: SelectItem[];
-    initialValue?: string[] | string;
+    initialValue?: string[] | string | boolean;
     hidden?: boolean;
     // Only show this input when another parser input equals a given value
     // (e.g. show the Steam API key only when the fetch strategy is "webapi").
     hiddenUnless?: { field: string; value: string };
+    // An "account" input: the parser input that names its store.
+    accountOf?: string;
     required?: boolean;
     important?: boolean;
     info?: string;
@@ -115,12 +136,19 @@ export interface ParsedSuccess {
   appendArgsToExecutable?: boolean; //Used by manual parsers
   // Scripts the parser runs around the launch (see lib/launch-wrapper).
   launchWrapper?: ParserLaunchWrapper;
+  // The game's id at a store SteamGridDB knows (Store Account parser): its
+  // artwork is looked up by it before the title search.
+  sgdbPlatformId?: SgdbPlatformId;
 }
 
 export interface ParsedData {
   executableLocation?: string; // Used by platform parsers in launcher mode
   success: ParsedSuccess[];
   failed: string[];
+  // Why the parser has no games and wasn't run, in a state that is normal
+  // (a Store Account parser that isn't signed in): the other parsers' games
+  // are listed all the same, and the preview's log says this.
+  skipped?: string;
 }
 
 export interface ParserVariableData {
@@ -129,7 +157,7 @@ export interface ParserVariableData {
   startInDirectory: string;
   steamDirectory: string;
   romDirectory: string;
-  titles: TitleModifiers,
+  titles: TitleModifiers;
   filePath: string;
   steamDirectoryGlobal: string;
   romsDirectoryGlobal: string;
@@ -193,7 +221,8 @@ export type ParserType =
   | "EA Desktop"
   | "Battle.net"
   | "GitHub Launcher"
-  | "Quiver Launcher";
+  | "Quiver Launcher"
+  | "Store Account";
 export type SuperType = "Manual" | "ArtworkOnly" | "ROM" | "Platform";
 
 export interface ParserInfo {

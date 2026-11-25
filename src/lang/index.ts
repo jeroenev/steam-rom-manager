@@ -238,6 +238,15 @@ export function markdownFor(load: (file: string) => string) {
         input: [load("ea-desktop-parser-input.md")],
       },
     },
+    storeAccountParser: {
+      docs__md: {
+        self: [
+          load("store-account-parser.md"),
+          load("store-account-parser-input.md"),
+        ],
+        input: [load("store-account-parser-input.md")],
+      },
+    },
     sgdbProvider: {
       docs__md: {
         self: [] as string[],

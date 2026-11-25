@@ -58,6 +58,10 @@ import {
 import { DomSanitizer } from "@angular/platform-browser";
 import { CoreClientService } from "../services/core-client.service";
 import { searchQuery } from "../../core/exceptions-format";
+import {
+  confirmOwnedShortcuts,
+  ownedShortcutsToAdd,
+} from "../../core/owned-confirm";
 import type { ExceptionChanges } from "../../core/exceptions-store";
 @Component({
   selector: "preview",
@@ -590,6 +594,22 @@ export class PreviewComponent implements OnDestroy {
   }
 
   save() {
+    // Many games that aren't installed at once (a store account's whole
+    // library, say): ask first.
+    const adding = ownedShortcutsToAdd(this.previewService.getPreviewData());
+    const confirmAbove =
+      this.settingsService.getSettings().ownedGames?.confirmAbove ?? 0;
+    if (
+      confirmOwnedShortcuts(adding, confirmAbove) &&
+      !window.confirm(
+        this.lang.confirmOwnedShortcuts__i.interpolate({
+          count: adding,
+          limit: confirmAbove,
+        }),
+      )
+    ) {
+      return Promise.resolve(false);
+    }
     return this.previewService.saveData({ removeAll: false, batchWrite: true });
   }
 

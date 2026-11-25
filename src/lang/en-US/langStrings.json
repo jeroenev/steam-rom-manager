@@ -20,6 +20,7 @@
       "retryDownload": "Retry artwork download",
       "generateAppList": "Refresh",
       "saveAppList": "Save to Steam",
+      "confirmOwnedShortcuts__i": "This adds ${count} games your store accounts own but haven't installed to Steam (Store Account parsers).\n\nAdd them?\n\nSRM asks when there are more than ${limit}: change that in Settings, Owned Games.",
       "removeAppList": "Remove from Steam",
       "remainingImages": "Retrieving urls:",
       "stopUrlRetrieving": "Stop",
@@ -139,6 +140,11 @@
         "invalidConfigurations__i": "${count} user parser(s) was/were skipped (invalid).",
         "executingParsers": "Executing parsers.",
         "reusedParsers__i": "Parsed ${parsed} of ${total} parsers again; the others hadn't changed since the last list.",
+        "ownedDuplicates__i": "Left out ${count} Store Account shortcut(s) that another parser already adds (same program and title).",
+        "ownedInOtherStores__i": "Left out ${count} Store Account shortcut(s) for games another of your store accounts also owns: that store comes first in the store order (Settings, Owned Games).",
+        "ownedLibraryStale__i": "${store}: using the games fetched on ${date}; the last refresh failed: ${error}",
+        "ownedParserSkipped__i": "${parser}: no games from this Store Account parser, the other parsers' games are listed. ${reason}",
+        "ownedLibraryNeedsSignIn__i": "${store}: the saved sign-in no longer works, so the games fetched on ${date} are used. Sign in again in the Store Account parser's settings.",
         "shutdownSteam": "If Steam is running, exit Steam.",
         "noParserConfigurations": "Please create parser in \"Parsers\" menu first.",
         "parserFoundNoFiles": "Parser(s) found no files matching user configuration.",
@@ -373,6 +379,83 @@
       "eaNotCompatible": "> EA Desktop Parser only supports Windows."
     }
   },
+  "storeAccountParser": {
+    "storeInputTitle": "Store",
+    "storePlaceholder": "Choose a store",
+    "accountInputTitle": "Account",
+    "installWithInputTitle": "A game that isn't installed opens",
+    "installWith": {
+      "auto": "The store's launcher, else Heroic (Linux), else the store page",
+      "heroic": "Heroic first (Linux), else the store's launcher or page",
+      "browser": "The store page in your browser"
+    },
+    "skipPrereleasesInputTitle": "Leave out betas, demos and playtests",
+    "skipInstalledElsewhereInputTitle": "Leave out games installed through another launcher",
+    "skipSteamInstalledInputTitle": "Leave out games Steam has installed",
+    "errors": {
+      "noStore": "> Choose the store whose account this parser lists.",
+      "unavailable__i": "> Signing in to ${store} comes with a later version of SRM.",
+      "notSignedIn__i": "> Not signed in to ${store}. Sign in under **Account** in this parser's settings.",
+      "noLibrary__i": "> The games of the ${store} account haven't been fetched: ${error}",
+      "fatalError__i": "> Store Account parser failed with fatal error:\n ${error}"
+    }
+  },
+  "stores": {
+    "component": {
+      "chooseStore": "Choose a store to sign in to its account.",
+      "unavailable__i": "Signing in to ${store} comes with a later version of SRM.",
+      "notSignedIn": "Not signed in.",
+      "signedIn": "Signed in.",
+      "signedInAs__i": "Signed in as ${name}.",
+      "games__i": "Games owned: ${count} (fetched ${when}).",
+      "notFetched": "Its games haven't been fetched yet.",
+      "partial": "Some games couldn't be looked up; they are fetched again soon.",
+      "refreshing": "Fetching its games…",
+      "needsSignIn": "The store no longer accepts the saved sign-in. Sign in again.",
+      "lastError__i": "The last refresh failed: ${error}",
+      "readOnly": "This SRM uses the games the app last fetched; sign in and refresh in the app.",
+      "secretsWarning": "No keyring is available, so sign-ins are encrypted with a fixed key that is the same in every copy of SRM: anyone who can read your files can decrypt them. Set up a keyring (such as GNOME Keyring or KWallet) to keep them safe.",
+      "pasteHeading": "Sign in with your browser",
+      "working": "Working…",
+      "buttons": {
+        "signIn": "Sign in",
+        "signInWithBrowser": "Sign in with your browser",
+        "openSignInPage": "Open the sign-in page again",
+        "refresh": "Refresh library",
+        "signOut": "Sign out",
+        "submit": "Finish signing in",
+        "cancel": "Cancel"
+      }
+    },
+    "service": {
+      "unknownStore__i": "Unknown store: ${store}",
+      "signedIn__i": "Signed in to ${store}.",
+      "signedInAs__i": "Signed in to ${store} as ${name}.",
+      "gamesFound__i": "The account owns ${count} games.",
+      "firstFetchFailed__i": "Its games couldn't be listed yet: ${error}",
+      "refreshed__i": "${store}: the account owns ${count} games.",
+      "signedOut__i": "Signed out of ${store}.",
+      "noLoginWindow__i": "${store} signs in through your browser only.",
+      "noLoginWindowHere": "This SRM can't open a sign-in window.",
+      "noBrowserLogin__i": "${store} signs in with SRM's sign-in window only."
+    },
+    "paste": {
+      "instructions": {
+        "epic": "Sign in to Epic Games in your browser. Epic then shows a page of text containing \"authorizationCode\". Copy the code after it (or all of the text) and paste it here. The code works for a few minutes only.",
+        "gog": "Sign in to GOG in your browser. When the page turns blank and its address starts with embed.gog.com/on_login_success, copy the whole address from the address bar and paste it here.",
+        "amazon": "Sign in to Amazon in your browser. When it lands on the Amazon home page, copy the full address from the address bar and paste it here.",
+        "humble": "Sign in to humblebundle.com in your browser and open your library. Then open the developer tools (F12), go to Network, reload the page, select the request for library, and copy the value of its Cookie request header. Paste it here. It is your login, so do not share it.",
+        "itch": "Sign in to itch.io in your browser and open your API keys page (Settings > API keys). Click \"Generate new API key\", then \"View\" next to the new key, and paste the key here. You can revoke it on the same page at any time."
+      },
+      "placeholder": {
+        "epic": "authorizationCode",
+        "gog": "https://embed.gog.com/on_login_success?origin=client&code=...",
+        "amazon": "https://www.amazon.com/?openid.assoc_handle=...&openid.oa2.authorization_code=...",
+        "humble": "Cookie header of www.humblebundle.com",
+        "itch": "itch.io API key"
+      }
+    }
+  },
   "globParser": {
     "inputTitle": "Search glob",
     "inputPlaceholder": "${title}.@(iso|ISO)",
@@ -494,7 +577,8 @@
         "fuzzy": "Fuzzy Matcher",
         "environmentVariables": "Environment Variables",
         "communityPresets": "Community Presets and Custom Variables",
-        "addGames": "Add Games"
+        "addGames": "Add Games",
+        "ownedGames": "Owned Games (Store Account parsers)"
       },
       "text": {
         "autoUpdate": "Check for updates on start",
@@ -533,7 +617,16 @@
         "browse_btn": "Browse",
         "choose_btn": "Choose",
         "closeDocs": "Close Docs",
-        "openDocs": "Open Docs"
+        "openDocs": "Open Docs",
+        "multiStore": "A game several store accounts own",
+        "multiStorePreferred": "One shortcut, from the first store",
+        "multiStoreAll": "A shortcut from every store",
+        "storeOrder": "Store order (the first store that owns a game gives its shortcut):",
+        "moveUp_btn": "Up",
+        "moveDown_btn": "Down",
+        "confirmAbove": "Ask before adding more games that aren't installed than this (0: never ask)",
+        "libraryMaxAgeHours": "Fetch a store account's games again when they are older than",
+        "hours": "hours"
       },
       "placeholder": {
         "noProviders": "None",

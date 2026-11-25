@@ -18,6 +18,7 @@ import {
   TitleModifiers,
   TitleModifierKey,
   TITLE_MODIFIER_KEYS,
+  SgdbPlatformId,
 } from "../models";
 import { FuzzyMatcher } from "./fuzzy-matcher";
 import { VariableParser } from "./variable-parser";
@@ -41,6 +42,7 @@ import * as sgdbSearch from "./image-providers/sgdb-search";
 import { TitleModifierHandler } from "./title-modifier-handler";
 import { makeLaunchWrapper, wrapperExecutable } from "./launch-wrapper";
 import { ruleFor, ruleTitle, searchQuery } from "../core/exceptions-format";
+import { isStoreKey } from "./stores/types";
 
 interface PreParserResult {
   superType: string;
@@ -373,6 +375,15 @@ export class FileParser {
           failed: _.cloneDeep(parsedData.failed),
           excluded: [],
         };
+        // (a Store Account parser's store: see PreviewBuilder's games
+        // several stores own)
+        if (parsedData.skipped) {
+          parsedConfig.skipped = parsedData.skipped;
+        }
+        const store = config.parserInputs?.storeAccount;
+        if (config.parserType === "Store Account" && isStoreKey(store)) {
+          parsedConfig.store = store;
+        }
         resolve({
           superType: superType,
           config: config,
@@ -627,6 +638,9 @@ export class FileParser {
             imagePool: undefined,
             onlineImageQueries: undefined,
           };
+          if (parsedData.success[i].sgdbPlatformId) {
+            newFile.sgdbPlatformId = parsedData.success[i].sgdbPlatformId;
+          }
 
           // In setting the modified title any of the previous titles can be used (extracted, postshortcut, postcv, postfuzzy)
           let variableData = this.makeVariableData(
@@ -1020,6 +1034,9 @@ export class FileParser {
             if (exceptions && !exceptions.excludeArtwork && query) {
               parsedConfig.files[i].onlineImageQueries = [query];
               parsedConfig.files[i].imagePool = query;
+              // (the user's search, a Fix Match pick or a title, wins over
+              // the store id)
+              delete parsedConfig.files[i].sgdbPlatformId;
             }
             if (exceptions && exceptions.excludeArtwork) {
               parsedConfig.files[i].onlineImageQueries = [];
@@ -1153,50 +1170,57 @@ export class FileParser {
         if (parsedConfig.drmProtect) {
           // One SteamGridDB lookup per query (files can share one), a few at
           // a time: thousands at once get rate-limited, and a failed lookup
-          // (e.g. offline) just means no backups are found.
+          // (e.g. offline) just means no backups are found. A game with a
+          // store id is looked up by it first, as its artwork is: the
+          // backups are named after the game that artwork came from.
           const limit = concurrencyLimit(8);
           const lookups = new Map<string, Promise<number[]>>();
-          const lookup = (query: string) => {
-            if (!lookups.has(query)) {
+          const lookup = (query: string, platformId?: SgdbPlatformId) => {
+            const key = JSON.stringify([query, platformId ?? null]);
+            if (!lookups.has(key)) {
               lookups.set(
-                query,
-                limit(() => sgdbSearch.retrieveIdsFromTitle(query)).catch(
-                  (): number[] => [],
-                ),
+                key,
+                limit(() =>
+                  sgdbSearch.retrieveIdsFromTitle(
+                    query,
+                    platformId ? [platformId] : [],
+                  ),
+                ).catch((): number[] => []),
               );
             }
-            return lookups.get(query);
+            return lookups.get(key);
           };
           for (let j = 0; j < parsedConfig.files.length; j++) {
             if (!parsedConfig.files[j].onlineImageQueries.length) {
               continue;
             }
             backedupPromises.push(
-              lookup(parsedConfig.files[j].onlineImageQueries[0]).then(
-                (possibleGameIds: number[]) => {
-                  if (!possibleGameIds.length) {
-                    return;
-                  }
-                  return Promise.all(
-                    artworkTypes.map((artworkType) =>
-                      glob(`${possibleGameIds[0]}.*`, {
-                        dot: true,
-                        cwd: path.join(
-                          paths.userDataDir,
-                          "artworkBackups",
-                          artworkType,
-                        ),
-                        absolute: true,
-                      }).then((localBackups: string[]) => {
-                        parsedConfig.files[j].backupImage[artworkType] =
-                          localBackups.length
-                            ? url.encodeFile(localBackups[0])
-                            : undefined;
-                      }),
-                    ),
-                  ).then(() => {});
-                },
-              ),
+              lookup(
+                parsedConfig.files[j].onlineImageQueries[0],
+                parsedConfig.files[j].sgdbPlatformId,
+              ).then((possibleGameIds: number[]) => {
+                if (!possibleGameIds.length) {
+                  return;
+                }
+                return Promise.all(
+                  artworkTypes.map((artworkType) =>
+                    glob(`${possibleGameIds[0]}.*`, {
+                      dot: true,
+                      cwd: path.join(
+                        paths.userDataDir,
+                        "artworkBackups",
+                        artworkType,
+                      ),
+                      absolute: true,
+                    }).then((localBackups: string[]) => {
+                      parsedConfig.files[j].backupImage[artworkType] =
+                        localBackups.length
+                          ? url.encodeFile(localBackups[0])
+                          : undefined;
+                    }),
+                  ),
+                ).then(() => {});
+              }),
             );
           }
         }

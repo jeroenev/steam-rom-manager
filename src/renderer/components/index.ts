@@ -31,3 +31,4 @@ export * from "./user-exceptions.component";
 export * from "./update-notifier.component";
 export * from "./choose-accounts.component";
 export * from "./theme-editor.component";
+export * from "./store-account.component";

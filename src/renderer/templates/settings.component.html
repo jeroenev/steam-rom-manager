@@ -230,6 +230,88 @@
       </div>
     </div>
   </div>
+  <div>
+    <div class="section">
+      <label>
+        {{ lang.label.ownedGames }}
+      </label>
+    </div>
+    <div class="inputContainer">
+      <div class="inlineGroup">
+        <ng-select
+          style="font-size: 0.85em"
+          class="ngSelect"
+          [ngModel]="settings.ownedGames.multiStore"
+          (ngModelChange)="
+            settings.ownedGames.multiStore = $event; onSettingsChange()
+          "
+          [allowEmpty]="false"
+          [sort]="false"
+          [values]="multiStoreOptions"
+        >
+        </ng-select>
+        <div class="text" style="margin-left: 0.25em">
+          {{ lang.text.multiStore }}
+        </div>
+      </div>
+    </div>
+    <div class="inputContainer">
+      <div class="text">{{ lang.text.storeOrder }}</div>
+      @for (store of storeOrder; track store; let i = $index) {
+        <div class="inlineGroup storeOrder">
+          <div class="text storeName">{{ i + 1 }}. {{ storeNames[store] }}</div>
+          <div
+            class="clickButton2"
+            [class.disabled]="i === 0"
+            (click)="moveStore(i, -1)"
+          >
+            {{ lang.text.moveUp_btn }}
+          </div>
+          <div
+            class="clickButton2"
+            [class.disabled]="i === storeOrder.length - 1"
+            (click)="moveStore(i, 1)"
+          >
+            {{ lang.text.moveDown_btn }}
+          </div>
+        </div>
+      }
+    </div>
+    <div class="inputContainer">
+      <div class="inlineGroup">
+        <ng-number-input
+          class="numberInput"
+          [ngModel]="settings.ownedGames.confirmAbove"
+          (ngModelChange)="
+            settings.ownedGames.confirmAbove = $event; onSettingsChange()
+          "
+          [min]="0"
+          [step]="1"
+        ></ng-number-input>
+        <div class="text" style="margin-left: 0.25em">
+          {{ lang.text.confirmAbove }}
+        </div>
+      </div>
+    </div>
+    <div class="inputContainer">
+      <div class="inlineGroup">
+        <ng-number-input
+          class="numberInput"
+          [ngModel]="settings.ownedGames.libraryMaxAgeHours"
+          (ngModelChange)="
+            settings.ownedGames.libraryMaxAgeHours = $event;
+            onSettingsChange()
+          "
+          [min]="1"
+          [step]="1"
+          [unit]="lang.text.hours"
+        ></ng-number-input>
+        <div class="text" style="margin-left: 0.25em">
+          {{ lang.text.libraryMaxAgeHours }}
+        </div>
+      </div>
+    </div>
+  </div>
 
 
   <div>

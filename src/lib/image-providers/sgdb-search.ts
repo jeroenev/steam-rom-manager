@@ -3,12 +3,28 @@
 import { sgdbIdRegex } from "./available-providers";
 import { SgdbClient } from "../../core/sgdb-client";
 import { getDefaultFetch } from "../../core/http";
+import type { SgdbPlatformId } from "../../models/image-providers.model";
 
-export async function retrieveIdsFromTitle(title: string): Promise<number[]> {
+// The game ids for a title, best first: an explicit ${gameid:N}; else the
+// game SteamGridDB knows by one of `platformIds` (a store id, as the artwork
+// providers look it up: the first it knows), else the title's search.
+export async function retrieveIdsFromTitle(
+  title: string,
+  platformIds: readonly SgdbPlatformId[] = [],
+): Promise<number[]> {
   if (sgdbIdRegex.test(title)) {
     return [parseInt(title.match(sgdbIdRegex)[1])];
   }
   const client = new SgdbClient(getDefaultFetch());
+  for (const { platform, id } of platformIds) {
+    // (not known by that id, or not reachable: the title search follows)
+    const game = await client
+      .getGameByPlatformId(platform, id)
+      .catch((): null => null);
+    if (game?.id) {
+      return [game.id];
+    }
+  }
   // URL encode plus signs to fix search issues with titles ending in "+"
   const encodedTitle = title.replace(/\+/g, "%2B");
   const games = await client.searchGame(encodedTitle);

@@ -12,3 +12,4 @@ export * from "./user-exceptions.service";
 export * from "./ipc.service";
 export * from "./view.service";
 export * from "./core-client.service";
+export * from "./stores.service";

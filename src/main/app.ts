@@ -16,9 +16,11 @@ import { hideBin } from "yargs/helpers";
 import { setDefaultFetch } from "../core/http";
 import { envInfo } from "../env-info";
 import { envChannel } from "../bridge";
+import { setStoreHost } from "../lib/stores";
 import { runCli } from "./cli";
 import { parseCliArgs } from "./cli-args";
-import { startCoreForWindow } from "./core-host";
+import { isFromWindow, startCoreForWindow } from "./core-host";
+import { electronStoreHost, logSecretsWarning } from "./store-host";
 
 // Crash Reporting
 crashReporter.start({
@@ -160,12 +162,29 @@ autoUpdater.on("update-downloaded", (info) => {
 });
 
 // Main Listeners
+
+// SRM never signs in with a TLS client certificate. Electron's default sends
+// the first one in the user's store without asking (Chrome would ask), and
+// store sign-in windows load third-party pages and frames: refuse it for
+// every request (sign-in windows, their pop-ups and frames, service workers,
+// main-process net.fetch).
+app.on(
+  "select-client-certificate",
+  (event, _contents, _url, _list, callback) => {
+    event.preventDefault();
+    callback();
+  },
+);
+
 app.on("ready", async () => {
   // Network I/O in the core (SteamGridDB, GitHub, Steam Web API) uses
   // Electron's network stack: system certificate store and proxy, which
   // Node's TLS (e.g. node-fetch) doesn't honour on some systems.
   setDefaultFetch((url, init) => net.fetch(url, init as RequestInit) as any);
   if (cliRequest) {
+    // Store accounts: the cached libraries, refreshed where this process
+    // can (see ElectronStoreHostOptions.commandLine); no sign-in windows.
+    setStoreHost(electronStoreHost({ commandLine: true }));
     // Headless: the CLI runs the core directly in this process.
     let code = 1;
     try {
@@ -175,11 +194,17 @@ app.on("ready", async () => {
     }
     app.exit(code);
   } else {
-    // The GUI's business logic runs here; the window is its UI.
+    // The GUI's business logic runs here; the window is its UI. Only SRM's
+    // window may use IPC (a store's sign-in page runs in a window too).
+    const fromMainWindow = (event: { sender: unknown }) =>
+      isFromWindow(event, () => mainWindow);
     const env = envInfo();
     ipcMain.on(envChannel, (event) => {
-      event.returnValue = env;
+      event.returnValue = fromMainWindow(event) ? env : null;
     });
+    const storeHost = electronStoreHost({ getWindow: () => mainWindow });
+    setStoreHost(storeHost);
+    logSecretsWarning(storeHost);
     const core = startCoreForWindow(() => mainWindow);
     app.on("before-quit", () => {
       core.fuzzy.saveCacheIfNeeded();
@@ -202,6 +227,7 @@ app.on("ready", async () => {
       autoUpdater.checkForUpdatesAndNotify();
     });
     ipcMain.on("download_update", (event: IpcMainEvent) => {
+      if (!fromMainWindow(event)) return;
       const token = (cancellationToken = new CancellationToken());
       autoUpdater.downloadUpdate(token).catch((err) => {
         console.log(err);
@@ -211,9 +237,11 @@ app.on("ready", async () => {
       });
     });
     ipcMain.on("restart_app", (event: IpcMainEvent) => {
+      if (!fromMainWindow(event)) return;
       autoUpdater.quitAndInstall();
     });
     ipcMain.on("cancel_update", (event: IpcMainEvent) => {
+      if (!fromMainWindow(event)) return;
       cancellationToken.cancel();
     });
   }

@@ -1,10 +1,11 @@
 import { ValidatorModifier, AppSettings } from "../../models";
+import { DEFAULT_OWNED_GAMES } from "../../models/settings.model";
 import * as _ from "lodash";
 import { versionUp, extractNames } from "./modifier-helpers";
 
 export const appSettings: ValidatorModifier<AppSettings> = {
   controlProperty: "version",
-  latestVersion: 11,
+  latestVersion: 12,
   fields: {
     undefined: {
       version: { method: () => 0 },
@@ -156,6 +157,17 @@ export const appSettings: ValidatorModifier<AppSettings> = {
       version: { method: versionUp },
       parserGroups: {
         method: (oldValue) => (Array.isArray(oldValue) ? oldValue : []),
+      },
+    },
+    11: {
+      version: { method: versionUp },
+      // New: owned games through store accounts. The defaults, under what
+      // a settings file may already have.
+      ownedGames: {
+        method: (oldValue) => ({
+          ..._.cloneDeep(DEFAULT_OWNED_GAMES),
+          ...(_.isPlainObject(oldValue) ? oldValue : {}),
+        }),
       },
     },
   },

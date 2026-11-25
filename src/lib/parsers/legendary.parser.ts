@@ -4,6 +4,10 @@ import { APP } from "../../variables";
 import * as fs from "fs-extra";
 import * as os from "os";
 import * as path from "path";
+import {
+  defaultLegendaryInstalledFile,
+  readLegendaryInstalled,
+} from "../helpers/launchers";
 
 export class LegendaryParser implements GenericParser {
   private get lang() {
@@ -45,19 +49,14 @@ export class LegendaryParser implements GenericParser {
       if (inputs.legendaryInstalledFile) {
         legendaryInstalledFile = inputs.legendaryInstalledFile;
       } else {
-        legendaryInstalledFile = path.join(
-          os.homedir(),
-          ".config/legendary/installed.json",
-        );
+        legendaryInstalledFile = defaultLegendaryInstalledFile();
       }
       const legendaryExePath: string | undefined =
         inputs.legendaryExeOverride || findOnPath("legendary");
       if (!fs.existsSync(legendaryInstalledFile) || !legendaryExePath) {
         return reject(this.lang.errors.legendaryNotInstalled);
       }
-      let installed = JSON.parse(
-        fs.readFileSync(legendaryInstalledFile, "utf-8"),
-      );
+      let installed = readLegendaryInstalled(legendaryInstalledFile);
       let parsedData: ParsedData = {
         executableLocation: legendaryExePath,
         success: [],

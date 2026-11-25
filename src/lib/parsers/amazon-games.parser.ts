@@ -5,6 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import { parse } from "yaml";
 import { SqliteWrapper } from "../helpers/sqlite";
+import { amazonGamesDb, defaultAmazonGamesExe } from "../helpers/launchers";
 
 export class AmazonGamesParser implements GenericParser {
   private get lang() {
@@ -44,13 +45,8 @@ export class AmazonGamesParser implements GenericParser {
         const launcherMode = inputs.amazonGamesLauncherMode;
 
         const amazonGamesExe =
-          inputs.amazonGamesExeOverride ||
-          path.resolve(
-            `${process.env.APPDATA}\\..\\local\\Amazon Games\\App\\Amazon Games.exe`,
-          );
-        const dbPath = path.resolve(
-          `${path.dirname(amazonGamesExe)}\\..\\Data\\Games\\Sql\\GameInstallInfo.sqlite`,
-        );
+          inputs.amazonGamesExeOverride || defaultAmazonGamesExe();
+        const dbPath = amazonGamesDb(amazonGamesExe);
 
         if (!fs.existsSync(dbPath)) {
           return reject(this.lang.errors.databaseNotFound);

@@ -10,6 +10,7 @@ import {
 import { artworkTypes, viewTypes } from "../lib/artwork-types";
 import { SteamList } from "./helpers.model";
 import { LaunchWrapper } from "./launch-wrapper.model";
+import type { SgdbPlatformId } from "./image-providers.model";
 
 export type ImageDownloadStatus =
   | "notStarted"
@@ -65,6 +66,9 @@ export interface ImageContent {
 
 export interface ImagesStatusAndContent {
   searchQueries: string[];
+  // The pool's game at the stores SteamGridDB knows (a Store Account
+  // parser's games): looked up before the search queries' titles.
+  platformIds?: SgdbPlatformId[];
   imageProviderAPIs: ImageProviderAPI[OnlineProviderType];
   content: ImageContent[];
 }
@@ -129,6 +133,10 @@ export interface PreviewDataApp {
   // and argumentString the game's own launch options, which go in the file
   // the shortcut runs.
   launchWrapper?: LaunchWrapper;
+  // Set on a Store Account parser's app (a game that isn't installed): Steam
+  // has no shortcut with its app id yet, so saving adds one (see
+  // core/owned-confirm.ts).
+  notInSteam?: boolean;
 }
 
 export interface PreviewDataApps {

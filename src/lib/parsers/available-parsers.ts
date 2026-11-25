@@ -36,6 +36,14 @@ export const availableParserInputs: Record<ParserType, string[]> = {
   "Non-SRM Shortcuts": [],
   "GitHub Launcher": ["githubLauncherDir"],
   "Quiver Launcher": ["quiverLauncherDir"],
+  // (its "account" input, storeAccountStatus, isn't a setting)
+  "Store Account": [
+    "storeAccount",
+    "storeInstallWith",
+    "storeSkipPrereleases",
+    "storeSkipInstalledElsewhere",
+    "storeSkipSteamInstalled",
+  ],
 };
 export const availableParserInputsInfo: Record<
   ParserType,
@@ -90,7 +98,50 @@ export const availableParserInputsInfo: Record<
   "Non-SRM Shortcuts": {},
   "GitHub Launcher": { githubLauncherDir: { inputType: "dir" } },
   "Quiver Launcher": { quiverLauncherDir: { inputType: "dir" } },
+  "Store Account": {
+    storeAccount: { inputType: "select" },
+    storeInstallWith: { inputType: "select" },
+    storeSkipPrereleases: { inputType: "toggle" },
+    storeSkipInstalledElsewhere: { inputType: "toggle" },
+    storeSkipSteamInstalled: { inputType: "toggle" },
+  },
 };
+
+// What a new parser of a type starts with besides its inputs' initial
+// values (the editor and `srm create-parser` apply it).
+export const parserTypeDefaults: Partial<
+  Record<ParserType, { steamCategories?: string[] }>
+> = {
+  // Steam has no "not installed" state for a shortcut: its collection is
+  // where that shows.
+  "Store Account": { steamCategories: ["Not installed"] },
+};
+
+// A parser's Steam categories once its type changes from `previous` to
+// `next`: the previous type's default categories, as they were, go (a Store
+// Account's "Not installed" would misfile an Epic parser's installed
+// games); then empty categories get the new type's default. Categories the
+// user changed stay as they are.
+export function categoriesAfterTypeChange(
+  previous: ParserType | undefined,
+  next: ParserType,
+  categories: readonly string[] | null | undefined,
+): string[] {
+  const sameList = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((value, i) => value === b[i]);
+  const previousDefault = previous
+    ? parserTypeDefaults[previous]?.steamCategories
+    : undefined;
+  let result = [...(categories ?? [])];
+  if (previousDefault && sameList(result, previousDefault)) {
+    result = [];
+  }
+  const nextDefault = parserTypeDefaults[next]?.steamCategories;
+  if (result.length === 0 && nextDefault) {
+    result = [...nextDefault];
+  }
+  return result;
+}
 
 export const availableParsers: ParserType[] = Object.keys(
   availableParserInputs,
@@ -112,6 +163,7 @@ export const superTypes: Record<SuperType, ParserType[]> = {
     "Battle.net",
     "GitHub Launcher",
     "Quiver Launcher",
+    "Store Account",
   ],
 };
 

@@ -4,6 +4,7 @@ import * as fs from "fs-extra";
 import * as os from "os";
 import * as path from "path";
 import { SqliteWrapper } from "../helpers/sqlite";
+import { findItchAppDataDir, itchDbPath } from "../helpers/launchers";
 
 export class ItchIoParser implements GenericParser {
   private get lang() {
@@ -44,18 +45,8 @@ export class ItchIoParser implements GenericParser {
         }
 
         const itchIoAppDataDir =
-          inputs.itchIoAppDataOverride ||
-          (() => {
-            switch (os.type()) {
-              case "Windows_NT":
-                return `${process.env.APPDATA}\\itch`;
-              case "Linux":
-                return `${os.homedir()}/.config/itch`;
-              case "Darwin":
-                return `${os.homedir()}/Library/Application Support/itch`;
-            }
-          })();
-        const dbPath = path.join(itchIoAppDataDir, "/db/butler.db");
+          inputs.itchIoAppDataOverride || findItchAppDataDir();
+        const dbPath = itchDbPath(itchIoAppDataDir);
         if (!fs.existsSync(dbPath)) {
           return reject(this.lang.errors.databaseNotFound);
         }

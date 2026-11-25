@@ -1,6 +1,8 @@
 import {
   PreviewData,
   ParsedUserConfiguration,
+  ParsedUserConfigurationFile,
+  ParserType,
   OnlineImages,
   AppSettings,
   SteamTree,
@@ -10,7 +12,7 @@ import {
   initArtworkRecord,
   Logger,
 } from "../models";
-import { ArtworkCache } from "../lib";
+import { ArtworkCache, VDF_Manager } from "../lib";
 import { APP } from "../variables";
 import * as steam from "../lib/helpers/steam";
 import * as url from "../lib/helpers/url";
@@ -22,6 +24,15 @@ import { imageProviderNames } from "../lib/image-providers/available-providers";
 import { ParsersStore } from "./parsers-store";
 import { SettingsStore } from "./settings-store";
 import { addUniqueLocalImage, emptyPools } from "./image-pools";
+import {
+  DEFAULT_MULTI_STORE_SETTINGS,
+  MultiStoreSettings,
+  OwnedEntry,
+  arrangeOwned,
+  storeRank,
+} from "../lib/stores/arrange";
+import { STORE_NAMES, StoreKey, isStoreKey } from "../lib/stores/types";
+import { cachedLibrary, lastRefreshFailure } from "../lib/stores/refresh";
 
 export interface BuildResult {
   // Absent when the parsers produced nothing to add.
@@ -31,6 +42,150 @@ export interface BuildResult {
   onlineImages: OnlineImages;
   // SteamGridDB artwork previously chosen per game (artworkCache.json).
   sgdbToArt?: SGDBToArt;
+}
+
+// The app id of a parsed file's shortcut (an artwork-only parser's file names
+// an existing shortcut's).
+export function appIdOf(
+  parserType: ParserType,
+  file: Pick<
+    ParsedUserConfigurationFile,
+    "modifiedExecutableLocation" | "titles"
+  >,
+): string {
+  return superTypesMap[parserType] !== "ArtworkOnly"
+    ? steam.generateAppId(file.modifiedExecutableLocation, file.titles.final)
+    : steam.lengthenAppId(file.modifiedExecutableLocation.replace(/\"/g, ""));
+}
+
+const STORE_ACCOUNT: ParserType = "Store Account";
+
+const accountKey = (steamDirectory: string, accountID: string) =>
+  `${steamDirectory}\n${accountID}`;
+
+// The app ids every parser but the Store Account parsers gives, per Steam
+// directory and user account. A Store Account shortcut (a game that isn't
+// installed) with one of them is left out: it is that parser's game (an
+// installed copy its id didn't match, such as an EA game whose content id
+// wasn't known; or one installed from another store whose launcher-mode
+// parser uses the same program, PowerShell for Epic and EA), and would
+// otherwise replace it or put it in "Not installed". Two Store Account
+// parsers with the same app id: ownedInOtherStores settles it by the store
+// order when their stores differ; for one store's, the first one's.
+export function otherParsersAppIds(
+  configs: readonly ParsedUserConfiguration[],
+): Map<string, Set<string>> {
+  const taken = new Map<string, Set<string>>();
+  for (const config of configs) {
+    if (config.parserType === STORE_ACCOUNT) {
+      continue;
+    }
+    for (const account of config.foundUserAccounts) {
+      const key = accountKey(config.steamDirectory, account.accountID);
+      let ids = taken.get(key);
+      if (!ids) {
+        ids = new Set();
+        taken.set(key, ids);
+      }
+      for (const file of config.files) {
+        ids.add(appIdOf(config.parserType, file));
+      }
+    }
+  }
+  return taken;
+}
+
+// The Store Account files left out because the Store Account parser of
+// another store has the same game for the same Steam directory and user
+// account, and that store comes first in the store order: per Steam
+// directory and user account. The same game is the same normalizeTitle of
+// the extracted title (see arrangeOwned; never with multiStore "all"), or,
+// in either mode, the same app id: stores whose shortcuts run the same
+// program (the browser opener, PowerShell for Epic and EA) give the same
+// title one Steam shortcut, which goes to the store that comes first, not to
+// the parser that comes first. Files the guard above leaves out
+// (`takenByOthers`) don't count: they aren't added. Other parsers' files are
+// no part of this.
+export function ownedInOtherStores(
+  configs: readonly ParsedUserConfiguration[],
+  settings: MultiStoreSettings,
+  takenByOthers: Map<string, Set<string>> = otherParsersAppIds(configs),
+): Map<string, Set<ParsedUserConfigurationFile>> {
+  type Entry = OwnedEntry & { file: ParsedUserConfigurationFile };
+  const entries = new Map<string, Entry[]>();
+  for (const config of configs) {
+    if (config.parserType !== STORE_ACCOUNT || !isStoreKey(config.store)) {
+      continue;
+    }
+    for (const account of config.foundUserAccounts) {
+      const key = accountKey(config.steamDirectory, account.accountID);
+      const taken = takenByOthers.get(key);
+      let list = entries.get(key);
+      if (!list) {
+        list = [];
+        entries.set(key, list);
+      }
+      for (const file of config.files) {
+        if (!taken?.has(appIdOf(config.parserType, file))) {
+          list.push({
+            title: file.titles.extracted ?? file.titles.final ?? "",
+            store: config.store,
+            file,
+          });
+        }
+      }
+    }
+  }
+  const leftOut = new Map<string, Set<ParsedUserConfigurationFile>>();
+  const rank = (entry: Entry) => storeRank(entry.store, settings.storeOrder);
+  for (const [key, list] of entries) {
+    const { kept, otherStore } = arrangeOwned(list, settings);
+    // One shortcut per app id: the best-ranked store's. (One store's
+    // entries with the same app id stay: the first one is added.)
+    const best = new Map<string, number>();
+    for (const entry of kept) {
+      const appId = appIdOf(STORE_ACCOUNT, entry.file);
+      const known = best.get(appId);
+      if (known === undefined || rank(entry) < known) {
+        best.set(appId, rank(entry));
+      }
+    }
+    const sameShortcut = kept.filter(
+      (entry) => rank(entry) > best.get(appIdOf(STORE_ACCOUNT, entry.file))!,
+    );
+    const files = [...otherStore, ...sameShortcut].map((entry) => entry.file);
+    if (files.length > 0) {
+      leftOut.set(key, new Set(files));
+    }
+  }
+  return leftOut;
+}
+
+// The app ids of the shortcuts each Steam user of `tree` has in Steam
+// (shortcuts.vdf), made from program and title as SRM's own are: per Steam
+// directory and user account. (getNonSteamShortcutsData doesn't index
+// them.)
+export async function steamShortcutIds(
+  tree: SteamTree<any>,
+): Promise<Map<string, Set<string>>> {
+  const ids = new Map<string, Set<string>>();
+  if (tree.numberOfUsers === 0) {
+    return ids;
+  }
+  const vdf = new VDF_Manager();
+  await vdf.prepare(tree.tree as any as PreviewData);
+  await vdf.read({
+    shortcuts: { read: true, skipIndexing: false },
+    addedItems: false,
+    screenshots: false,
+  });
+  vdf.forEach((steamDirectory, userId, listItem) => {
+    ids.set(
+      accountKey(steamDirectory, userId),
+      new Set(listItem.shortcuts.getAppIds()),
+    );
+  });
+  return ids;
 }
 
 // Builds the preview list: runs the enabled parsers and turns their output
@@ -71,6 +226,8 @@ export class PreviewBuilder {
       reuse && !parserIds
         ? await this.parsers.executeFileParserReusing(...chosen)
         : await this.parsers.executeFileParser(...chosen);
+    this.logSkippedParsers(data.parsedData.parsedConfigs);
+    this.logStaleLibraries(data.parsedData.parsedConfigs);
     const ran = data.parsedData.parsedConfigs.length;
     if (reuse && data.reparsed < ran) {
       this.loggerService.info(
@@ -150,6 +307,55 @@ export class PreviewBuilder {
     };
   }
 
+  // A parser that had no games to give for a normal reason (a Store Account
+  // parser signed out of its store, say): the others' games are listed, and
+  // this says which parser was left out and why, as an alert too. (Also when
+  // the parse cache reused its result.)
+  private logSkippedParsers(configs: readonly ParsedUserConfiguration[]) {
+    for (const config of configs) {
+      if (!config.skipped) {
+        continue;
+      }
+      this.loggerService.info(
+        this.lang.info.ownedParserSkipped__i.interpolate({
+          parser: config.configurationTitle,
+          reason: config.skipped,
+        }),
+        { invokeAlert: true, alertTimeout: 3000 },
+      );
+    }
+  }
+
+  // The Store Account parsers whose store's last refresh failed used the
+  // games fetched before: one line per store says so, and why, in SRM's own
+  // log (the app's event log, and the command line's), also when the parse
+  // cache reused their result. (A store module's own log goes to the
+  // diagnostics file only.)
+  private logStaleLibraries(configs: readonly ParsedUserConfiguration[]) {
+    const stores = _.uniq(
+      configs
+        .filter((c) => c.parserType === STORE_ACCOUNT && isStoreKey(c.store))
+        .map((c) => c.store as StoreKey),
+    );
+    for (const store of stores) {
+      const failure = lastRefreshFailure(store);
+      const library = failure ? cachedLibrary(store) : null;
+      if (!failure || !library) {
+        continue;
+      }
+      const values = {
+        store: STORE_NAMES[store],
+        date: new Date(library.fetchedAt).toLocaleString(),
+        error: failure.message,
+      };
+      this.loggerService.info(
+        failure.needsSignIn
+          ? this.lang.info.ownedLibraryNeedsSignIn__i.interpolate(values)
+          : this.lang.info.ownedLibraryStale__i.interpolate(values),
+      );
+    }
+  }
+
   private async createPreviewData(
     data: ParsedUserConfiguration[],
     pools: OnlineImages,
@@ -173,6 +379,19 @@ export class PreviewBuilder {
     let gridData = nonSteamShortcutsData.gridData.tree;
     let numberOfItems: number = 0;
     let previewData: PreviewData = {};
+    const takenByOthers = otherParsersAppIds(data);
+    let ownedDuplicates = 0;
+    const otherStores = ownedInOtherStores(
+      data,
+      this.appSettings.ownedGames ?? DEFAULT_MULTI_STORE_SETTINGS,
+      takenByOthers,
+    );
+    let ownedInOtherStore = 0;
+    const inSteam = data.some(
+      (config) => config.parserType === STORE_ACCOUNT && config.files.length,
+    )
+      ? await steamShortcutIds(steamTreeData)
+      : new Map<string, Set<string>>();
 
     for (let i = 0; i < data.length; i++) {
       let config = data[i];
@@ -204,12 +423,20 @@ export class PreviewBuilder {
         for (let k = 0; k < data[i].files.length; k++) {
           let file = config.files[k];
           let executableLocation = file.modifiedExecutableLocation;
-          let title = file.titles.final;
-          let appID: string = "";
-          if (superTypesMap[config.parserType] !== "ArtworkOnly") {
-            appID = steam.generateAppId(executableLocation, title);
-          } else {
-            appID = steam.lengthenAppId(executableLocation.replace(/\"/g, ""));
+          let appID = appIdOf(config.parserType, file);
+          const userKey = accountKey(
+            config.steamDirectory,
+            userAccount.accountID,
+          );
+          if (config.parserType === STORE_ACCOUNT) {
+            if (takenByOthers.get(userKey)?.has(appID)) {
+              ownedDuplicates++;
+              continue;
+            }
+            if (otherStores.get(userKey)?.has(file)) {
+              ownedInOtherStore++;
+              continue;
+            }
           }
 
           if (
@@ -237,17 +464,22 @@ export class PreviewBuilder {
               }
             }
           }
+          // (a Store Account game's id at its store: both providers find
+          // the game by it first)
+          const platformIds = file.sgdbPlatformId ? [file.sgdbPlatformId] : [];
           for (const artworkType of artworkTypes) {
             if (pools[artworkType][file.imagePool] === undefined) {
               pools[artworkType][file.imagePool] = {
                 online: {
                   sgdb: {
                     searchQueries: file.onlineImageQueries,
+                    platformIds: [...platformIds],
                     imageProviderAPIs: config.imageProviderAPIs.sgdb,
                     content: [],
                   },
                   steamCDN: {
                     searchQueries: file.onlineImageQueries,
+                    platformIds: [...platformIds],
                     imageProviderAPIs: config.imageProviderAPIs.steamCDN || {},
                     content: [],
                   },
@@ -264,17 +496,17 @@ export class PreviewBuilder {
                   config.imageProviders,
                 );
               for (const provider of config.imageProviders) {
-                let currentQueries =
-                  pools[artworkType][file.imagePool].online[provider]
-                    .searchQueries;
-                pools[artworkType][file.imagePool].online[
-                  provider
-                ].imageProviderAPIs = config.imageProviderAPIs[provider];
-                pools[artworkType][file.imagePool].online[
-                  provider
-                ].searchQueries = _.union(
-                  currentQueries,
+                const online =
+                  pools[artworkType][file.imagePool].online[provider];
+                online.imageProviderAPIs = config.imageProviderAPIs[provider];
+                online.searchQueries = _.union(
+                  online.searchQueries,
                   file.onlineImageQueries,
+                );
+                online.platformIds = _.unionWith(
+                  online.platformIds ?? [],
+                  platformIds,
+                  _.isEqual,
                 );
               }
             }
@@ -369,6 +601,9 @@ export class PreviewBuilder {
               overlayImages: config.overlayImages,
               executableLocation,
               ...(file.launchWrapper && { launchWrapper: file.launchWrapper }),
+              ...(config.parserType === STORE_ACCOUNT && {
+                notInSteam: !inSteam.get(userKey)?.has(appID),
+              }),
             };
           } else {
             let currentCategories =
@@ -384,6 +619,20 @@ export class PreviewBuilder {
           }
         }
       }
+    }
+    if (ownedDuplicates > 0) {
+      this.loggerService.info(
+        this.lang.info.ownedDuplicates__i.interpolate({
+          count: ownedDuplicates,
+        }),
+      );
+    }
+    if (ownedInOtherStore > 0) {
+      this.loggerService.info(
+        this.lang.info.ownedInOtherStores__i.interpolate({
+          count: ownedInOtherStore,
+        }),
+      );
     }
     return { numberOfItems: numberOfItems, data: previewData };
   }

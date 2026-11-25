@@ -4,6 +4,7 @@ import {
   ImageProviderAPI,
   OnlineProviderType,
   ProviderCallback,
+  SgdbPlatformId,
 } from "../models";
 import {
   imageProviderNames,
@@ -22,6 +23,8 @@ import { SgdbClient } from "./sgdb-client";
 
 interface ProviderTask {
   title: string;
+  // The game's ids at stores SteamGridDB knows, tried before the title.
+  platformIds: readonly SgdbPlatformId[];
   imageType: string;
   imageProviderAPIs: ImageProviderAPI[OnlineProviderType];
   emit: ProviderCallback;
@@ -63,16 +66,28 @@ function reportError(
 }
 
 // SteamGridDB lookups shared by every artwork type and provider of a run:
-// one search per title and one game per id, not one per (type, provider).
-// Cleared when lookups stop (each new list starts fresh).
+// one search per title, one lookup per store id and one game per id, not one
+// per (type, provider). Cleared when lookups stop (each new list starts
+// fresh).
 class SgdbLookups {
   private ids = new Map<string, Promise<number | undefined>>();
+  private byStoreId = new Map<string, Promise<number | undefined>>();
   private games = new Map<number, Promise<any>>();
 
   constructor(readonly client: SgdbClient) {}
 
-  // The game id for a title (or an explicit ${gameid:N}).
-  gameId(title: string) {
+  // The game id for a title: an explicit ${gameid:N} (the user's pick), else
+  // the game SteamGridDB knows by one of `platformIds` (the first it knows),
+  // else the title's search.
+  async gameId(title: string, platformIds: readonly SgdbPlatformId[] = []) {
+    if (!sgdbIdRegex.test(title)) {
+      for (const platformId of platformIds) {
+        const id = await this.storeGameId(platformId);
+        if (id) {
+          return id;
+        }
+      }
+    }
     if (!this.ids.has(title)) {
       this.ids.set(title, this.search(title));
     }
@@ -88,6 +103,23 @@ class SgdbLookups {
     return (results[0] || {}).id as number | undefined;
   }
 
+  // Undefined when SteamGridDB doesn't know the game by that id (404), or
+  // can't be reached: the title search follows, and reports an error that
+  // isn't the store id's.
+  private storeGameId({ platform, id }: SgdbPlatformId) {
+    const key = `${platform}/${id}`;
+    if (!this.byStoreId.has(key)) {
+      this.byStoreId.set(
+        key,
+        this.client.getGameByPlatformId(platform, id).then(
+          (game) => (game?.id as number) || undefined,
+          () => undefined,
+        ),
+      );
+    }
+    return this.byStoreId.get(key);
+  }
+
   // The game with its Steam platform data.
   steamGame(id: number) {
     if (!this.games.has(id)) {
@@ -101,6 +133,7 @@ class SgdbLookups {
 
   clear() {
     this.ids.clear();
+    this.byStoreId.clear();
     this.games.clear();
   }
 }
@@ -119,7 +152,7 @@ function noMatch(task: ProviderTask, provider: OnlineProviderType) {
 function sgdbProvider(lookups: SgdbLookups): Provider {
   const { client } = lookups;
   return async (task) => {
-    const id = await lookups.gameId(task.title);
+    const id = await lookups.gameId(task.title, task.platformIds);
     if (!id) {
       return noMatch(task, "sgdb");
     }
@@ -215,7 +248,7 @@ async function steamCdnUrl(
 
 function steamCdnProvider(lookups: SgdbLookups, fetch: Fetch): Provider {
   return async (task) => {
-    const id = await lookups.gameId(task.title);
+    const id = await lookups.gameId(task.title, task.platformIds);
     if (!id) {
       return noMatch(task, "steamCDN");
     }
@@ -318,12 +351,15 @@ export class ArtworkProviders {
     return providerInfoLang[provider];
   }
 
+  // `platformIds`: the game's ids at stores SteamGridDB knows (a Store
+  // Account parser's game), looked up before `title` is searched.
   retrieveUrls(
     title: string,
     imageType: string,
     imageProviderAPIs: ImageProviderAPI[OnlineProviderType],
     provider: OnlineProviderType,
     eventCallback: ProviderCallback,
+    platformIds: readonly SgdbPlatformId[] = [],
   ) {
     if (!this.queues[provider]) {
       eventCallback("completed", { title });
@@ -335,7 +371,13 @@ export class ArtworkProviders {
         eventCallback(event, data);
       }
     };
-    this.queues[provider].push({ title, imageType, imageProviderAPIs, emit });
+    this.queues[provider].push({
+      title,
+      platformIds,
+      imageType,
+      imageProviderAPIs,
+      emit,
+    });
   }
 
   // Abandons all pending and in-flight lookups.
