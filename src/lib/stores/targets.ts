@@ -363,6 +363,10 @@ function launcherTarget(
 }
 
 // Ubisoft Connect's install link (Playnite's, GOG Galaxy's and Lutris's).
+// It opens Ubisoft Connect's install dialog, whether Ubisoft Connect was
+// running or not, also for a game linked to an Epic account (checked with
+// Ubisoft Connect 175, 2026-11). Only while it's online: in offline mode it
+// answers "Unable to start download (Code: 17003)".
 export function ubisoftInstallLink(game: OwnedGame) {
   return `uplay://install/${game.id}`;
 }

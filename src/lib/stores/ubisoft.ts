@@ -28,7 +28,7 @@
 // OwnedGame.id is the product id: the launcher's id, which uplay:// links,
 // the Installs registry key and the UPlay parser use. extra: `space_id`
 // (SteamGridDB knows the game by it), `partner: "epic"` for a copy linked to
-// the Epic Games Store.
+// the Epic Games Store (which Ubisoft Connect installs too).
 
 import * as fs from "fs";
 import * as path from "path";
