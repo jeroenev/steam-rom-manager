@@ -92,3 +92,7 @@ When the titles differ (the store's launcher can name a game differently from th
 ## The command line
 
 `srm add` lists the games the app last fetched. The app's own command line fetches an old library again when it can read the app's sign-in (it can't always: on Windows it has a secret storage of its own); the standalone command line never fetches at all. Sign in and out in the app.
+
+## When it isn't signed in
+
+A Store Account parser that isn't signed in (you haven't signed in yet, or signed out), or whose games have never been fetched, adds no games, and the other parsers' games are still listed: **Add Games** says in its log which parser was left out and why, and `srm add` does the same, adds the other parsers' games and ends normally. Sign in under **Account** in the parser's settings, or disable the parser, to stop the message. A shortcut this parser added earlier stays in Steam, unless **Remove shortcuts for disabled parsers** (in the Add Games settings) is on: it removes the shortcuts of any parser that has no games in the list, a parser that was left out included.

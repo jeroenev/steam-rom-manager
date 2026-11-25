@@ -82,6 +82,8 @@ export interface ParsedUserConfiguration {
   excluded: { exclusionId: string; title: string; filePath: string }[];
   // A Store Account parser's: the store whose account it lists.
   store?: StoreKey;
+  // ParsedData.skipped
+  skipped?: string;
 }
 const inputTypes = StringLiteralArray([
   "text",
@@ -143,6 +145,10 @@ export interface ParsedData {
   executableLocation?: string; // Used by platform parsers in launcher mode
   success: ParsedSuccess[];
   failed: string[];
+  // Why the parser has no games and wasn't run, in a state that is normal
+  // (a Store Account parser that isn't signed in): the other parsers' games
+  // are listed all the same, and the preview's log says this.
+  skipped?: string;
 }
 
 export interface ParserVariableData {

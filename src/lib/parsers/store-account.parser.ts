@@ -396,6 +396,16 @@ export class StoreAccountParser implements GenericParser {
     }
   }
 
+  // No games, and why (the error messages start with "> " for the fatal
+  // error they usually are).
+  private skip(reason: string): ParsedData {
+    return {
+      success: [],
+      failed: [],
+      skipped: reason.replace(/^>\s*/, ""),
+    };
+  }
+
   private async parse(
     directories: string[],
     inputs: { [key: string]: any },
@@ -408,8 +418,12 @@ export class StoreAccountParser implements GenericParser {
     if (!storeClient(store)) {
       throw this.lang.errors.unavailable__i.interpolate({ store: name });
     }
+    // (signed out, or a library never fetched, is a state the parser is in
+    // until the user signs in: it adds nothing, and doesn't stop the others)
     if (!signedIn(store)) {
-      throw this.lang.errors.notSignedIn__i.interpolate({ store: name });
+      return this.skip(
+        this.lang.errors.notSignedIn__i.interpolate({ store: name }),
+      );
     }
     // (fetched again first when it's old and this SRM can; refreshIfStale
     // itself falls back to the last fetched list while the account is
@@ -419,13 +433,14 @@ export class StoreAccountParser implements GenericParser {
       library = await currentLibrary(store);
     } catch (err) {
       // Signed out, or into another account, while it was fetched: that wins.
-      if (!signedIn(store)) {
-        throw this.lang.errors.notSignedIn__i.interpolate({ store: name });
-      }
-      throw this.lang.errors.noLibrary__i.interpolate({
-        store: name,
-        error: messageOf(err),
-      });
+      return this.skip(
+        signedIn(store)
+          ? this.lang.errors.noLibrary__i.interpolate({
+              store: name,
+              error: messageOf(err),
+            })
+          : this.lang.errors.notSignedIn__i.interpolate({ store: name }),
+      );
     }
 
     // (an option left unset is on: these are on by default)

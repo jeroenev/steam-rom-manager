@@ -759,10 +759,12 @@ describe("Store Account parser (characterization)", () => {
     );
   });
 
-  it("not signed in, a store that comes later, a library never fetched: says which", async () => {
+  it("not signed in, a library never fetched: no games and says why, a store that comes later: fatal", async () => {
     await refresh.deleteAccount("gog");
-    await expect(parse(config({}))).rejects.toThrow(
-      "Not signed in to GOG. Sign in under **Account**",
+    const signedOut = (await parse(config({}))).parsedConfigs[0];
+    expect(signedOut.files).toEqual([]);
+    expect(signedOut.skipped).toBe(
+      "Not signed in to GOG. Sign in under **Account** in this parser's settings.",
     );
     // (a store this version has no client for)
     const epic = storeClient("epic");
@@ -777,9 +779,35 @@ describe("Store Account parser (characterization)", () => {
       }
     }
     storage.saveSession("gog", { accountName: "player", data: {} }, host);
-    await expect(parse(config({}))).rejects.toThrow(
+    const neverFetched = (await parse(config({}))).parsedConfigs[0];
+    expect(neverFetched.files).toEqual([]);
+    expect(neverFetched.skipped).toContain(
       "The games of the GOG account haven't been fetched",
     );
+  });
+
+  it("a signed out parser doesn't stop the other parsers", async () => {
+    // GOG's parser is signed out; itch.io's (a second Store Account
+    // parser) works.
+    await refresh.deleteAccount("gog");
+    const { parsedConfigs } = await parse(
+      config({}),
+      config(
+        { storeAccount: "itch" },
+        { configTitle: "Itch", parserId: "owned-itch" },
+      ),
+    );
+    const [gog, itch] = parsedConfigs;
+    expect(gog.files).toEqual([]);
+    expect(gog.skipped).toContain("Not signed in to GOG");
+    expect(itch.files.length).toBeGreaterThan(0);
+    expect(itch.skipped).toBeUndefined();
+    // (signed in again: no longer skipped)
+    storage.saveSession("gog", { accountName: "player", data: {} }, host);
+    library("gog", gogGames);
+    const again = (await parse(config({}))).parsedConfigs[0];
+    expect(again.skipped).toBeUndefined();
+    expect(again.files.length).toBeGreaterThan(0);
   });
 
   it("an old library is used as it is where it can't be fetched", async () => {
@@ -872,7 +900,9 @@ describe("Store Account parser (characterization)", () => {
       await asked;
       await refresh.deleteAccount("gog");
       answer();
-      await expect(parsed).rejects.toThrow("Not signed in to GOG");
+      const { parsedConfigs } = await parsed;
+      expect(parsedConfigs[0].files).toEqual([]);
+      expect(parsedConfigs[0].skipped).toContain("Not signed in to GOG");
     });
 
     it("another account: the parser has no games of the old one", async () => {
@@ -880,7 +910,9 @@ describe("Store Account parser (characterization)", () => {
       await asked;
       await gogLogin(host, "someone else");
       answer();
-      await expect(parsed).rejects.toThrow(
+      const { parsedConfigs } = await parsed;
+      expect(parsedConfigs[0].files).toEqual([]);
+      expect(parsedConfigs[0].skipped).toContain(
         "The games of the GOG account haven't been fetched",
       );
     });
