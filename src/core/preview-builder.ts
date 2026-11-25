@@ -226,6 +226,7 @@ export class PreviewBuilder {
       reuse && !parserIds
         ? await this.parsers.executeFileParserReusing(...chosen)
         : await this.parsers.executeFileParser(...chosen);
+    this.logSkippedParsers(data.parsedData.parsedConfigs);
     this.logStaleLibraries(data.parsedData.parsedConfigs);
     const ran = data.parsedData.parsedConfigs.length;
     if (reuse && data.reparsed < ran) {
@@ -304,6 +305,25 @@ export class PreviewBuilder {
       onlineImages: pools,
       sgdbToArt: artworkCache.sgdbToArt,
     };
+  }
+
+  // A parser that had no games to give for a normal reason (a Store Account
+  // parser signed out of its store, say): the others' games are listed, and
+  // this says which parser was left out and why, as an alert too. (Also when
+  // the parse cache reused its result.)
+  private logSkippedParsers(configs: readonly ParsedUserConfiguration[]) {
+    for (const config of configs) {
+      if (!config.skipped) {
+        continue;
+      }
+      this.loggerService.info(
+        this.lang.info.ownedParserSkipped__i.interpolate({
+          parser: config.configurationTitle,
+          reason: config.skipped,
+        }),
+        { invokeAlert: true, alertTimeout: 3000 },
+      );
+    }
   }
 
   // The Store Account parsers whose store's last refresh failed used the

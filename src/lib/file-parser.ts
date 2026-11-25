@@ -377,6 +377,9 @@ export class FileParser {
         };
         // (a Store Account parser's store: see PreviewBuilder's games
         // several stores own)
+        if (parsedData.skipped) {
+          parsedConfig.skipped = parsedData.skipped;
+        }
         const store = config.parserInputs?.storeAccount;
         if (config.parserType === "Store Account" && isStoreKey(store)) {
           parsedConfig.store = store;
